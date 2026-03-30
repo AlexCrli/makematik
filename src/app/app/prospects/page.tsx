@@ -16,12 +16,12 @@ interface Client {
   city: string | null;
   status: string;
   nb_splits: number | null;
-  next_followup: string | null;
+  next_contact_date: string | null;
 }
 
 const STATUSES = [
   { key: "all", label: "Tous" },
-  { key: "nouveau", label: "Nouveau", color: "bg-blue-100 text-blue-700" },
+  { key: "new", label: "Nouveau", color: "bg-blue-100 text-blue-700" },
   { key: "a_rappeler", label: "À rappeler", color: "bg-orange-100 text-orange-700" },
   { key: "devis_envoye", label: "Devis envoyé", color: "bg-purple-100 text-purple-700" },
   { key: "rdv_confirme", label: "RDV confirmé", color: "bg-green-100 text-green-700" },
@@ -354,27 +354,34 @@ export default function ProspectsPage() {
   const [showModal, setShowModal] = useState(false);
 
   const fetchClients = useCallback(async () => {
-    if (!supabaseBrowser || !organizationId) {
+    if (!supabaseBrowser) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
 
-    let query = supabaseBrowser
-      .from("clients")
-      .select("id, first_name, last_name, phone, city, status, nb_splits, next_followup")
-      .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
-
-    if (selectedCompanyId) {
-      query = query.eq("company_id", selectedCompanyId);
+    const session = (await supabaseBrowser.auth.getSession()).data.session;
+    if (!session) {
+      setLoading(false);
+      return;
     }
 
-    const { data } = await query;
-    setClients(data ?? []);
+    const params = new URLSearchParams();
+    if (selectedCompanyId) params.set("company_id", selectedCompanyId);
+
+    try {
+      const res = await fetch(`/api/clients?${params}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      setClients(json.clients ?? []);
+    } catch {
+      setClients([]);
+    }
+
     setLoading(false);
-  }, [organizationId, selectedCompanyId]);
+  }, [selectedCompanyId]);
 
   useEffect(() => {
     fetchClients();
@@ -505,8 +512,8 @@ export default function ProspectsPage() {
                   <td className="px-6 py-3.5">{statusBadge(c.status)}</td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">{c.nb_splits ?? "—"}</td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">
-                    {c.next_followup
-                      ? new Date(c.next_followup).toLocaleDateString("fr-FR")
+                    {c.next_contact_date
+                      ? new Date(c.next_contact_date).toLocaleDateString("fr-FR")
                       : "—"}
                   </td>
                   <td className="px-6 py-3.5 text-right">
@@ -557,8 +564,8 @@ export default function ProspectsPage() {
               </div>
               <div className="flex items-center justify-between pt-1">
                 <span className="text-xs text-gray-400">
-                  {c.next_followup
-                    ? `Relance : ${new Date(c.next_followup).toLocaleDateString("fr-FR")}`
+                  {c.next_contact_date
+                    ? `Relance : ${new Date(c.next_contact_date).toLocaleDateString("fr-FR")}`
                     : "Pas de relance prévue"}
                 </span>
                 <button
