@@ -5,9 +5,23 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
+    // Map client fields to Supabase column names
+    const row = {
+      name: body.name,
+      email: body.email,
+      phone: body.phone || null,
+      company: body.company,
+      sector: body.sector || null,
+      needs: Array.isArray(body.needs) ? body.needs : [],
+      description: body.description,
+      specific_features: body.features || null,
+      budget: body.budget || null,
+      status: "new",
+    };
+
     // Save to Supabase
     if (supabase) {
-      const { error } = await supabase.from("prospects").insert([body]);
+      const { error } = await supabase.from("prospects").insert([row]);
       if (error) {
         console.error("Supabase insert error:", error.message);
       }
