@@ -16,6 +16,8 @@ const config: Config = {
           hover: "var(--surface-hover)",
         },
         border: "var(--border)",
+        "section-alt": "var(--section-alt)",
+        "section-alt2": "var(--section-alt2)",
       },
     },
   },
