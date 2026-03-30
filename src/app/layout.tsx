@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
+import PublicShell from "./components/PublicShell";
 
 export const metadata: Metadata = {
   title: "Makematik — On fabrique vos outils métier",
@@ -16,10 +15,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fr" className="antialiased">
+      <head>
+        <link
+          href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen flex flex-col">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <PublicShell>{children}</PublicShell>
       </body>
     </html>
   );
