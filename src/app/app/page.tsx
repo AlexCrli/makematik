@@ -1,74 +1,152 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-client";
+import { NewFollowUpModal } from "./prospects/FollowUpModal";
 
-const kpis = [
-  {
-    label: "Prospects ce mois",
-    value: 0,
-    icon: (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-      </svg>
-    ),
-    color: "#6366f1",
-  },
-  {
-    label: "Devis en attente",
-    value: 0,
-    icon: (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-      </svg>
-    ),
-    color: "#f59e0b",
-  },
-  {
-    label: "RDV à venir",
-    value: 0,
-    icon: (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-      </svg>
-    ),
-    color: "#10b981",
-  },
-  {
-    label: "CA ce mois",
-    value: "0 \u20ac",
-    icon: (
-      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
-      </svg>
-    ),
-    color: "#8b5cf6",
-  },
-];
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+interface Stats {
+  prospects_this_month: number;
+  devis_en_attente: number;
+  rdv_confirmes: number;
+}
+
+interface RelanceClient {
+  id: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  city: string | null;
+  status: string;
+  next_contact_date: string | null;
+}
+
+const STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  new: { label: "Nouveau", color: "bg-blue-100 text-blue-700" },
+  to_recall: { label: "À rappeler", color: "bg-orange-100 text-orange-700" },
+  quote_sent: { label: "Devis envoyé", color: "bg-purple-100 text-purple-700" },
+  rdv_confirmed: { label: "RDV confirmé", color: "bg-green-100 text-green-700" },
+  client: { label: "Client", color: "bg-teal-100 text-teal-700" },
+  lost: { label: "Perdu", color: "bg-red-100 text-red-700" },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+async function getToken() {
+  if (!supabaseBrowser) return null;
+  const session = (await supabaseBrowser.auth.getSession()).data.session;
+  return session?.access_token ?? null;
+}
+
+function statusBadge(status: string) {
+  const s = STATUS_LABELS[status] ?? { label: status, color: "bg-gray-100 text-gray-600" };
+  return (
+    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${s.color}`}>
+      {s.label}
+    </span>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [firstName, setFirstName] = useState("");
+  const [stats, setStats] = useState<Stats>({ prospects_this_month: 0, devis_en_attente: 0, rdv_confirmes: 0 });
+  const [relances, setRelances] = useState<RelanceClient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [followUpClientId, setFollowUpClientId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadProfile() {
-      if (!supabaseBrowser) return;
+  const fetchData = useCallback(async () => {
+    const token = await getToken();
+    if (!token) { setLoading(false); return; }
 
-      const {
-        data: { user },
-      } = await supabaseBrowser.auth.getUser();
-      if (!user) return;
-
-      const { data } = await supabaseBrowser
-        .from("profiles")
-        .select("first_name")
-        .eq("id", user.id)
-        .single();
-
-      if (data) setFirstName(data.first_name);
+    // Load profile name
+    if (supabaseBrowser) {
+      const { data: { user } } = await supabaseBrowser.auth.getUser();
+      if (user) {
+        const { data } = await supabaseBrowser
+          .from("profiles")
+          .select("first_name")
+          .eq("id", user.id)
+          .single();
+        if (data) setFirstName(data.first_name);
+      }
     }
 
-    loadProfile();
+    // Fetch stats + relances in parallel
+    const headers = { Authorization: `Bearer ${token}` };
+    const [statsRes, relancesRes] = await Promise.all([
+      fetch("/api/dashboard/stats", { headers }),
+      fetch("/api/dashboard/relances", { headers }),
+    ]);
+
+    if (statsRes.ok) {
+      const json = await statsRes.json();
+      setStats(json);
+    }
+    if (relancesRes.ok) {
+      const json = await relancesRes.json();
+      setRelances(json.relances ?? []);
+    }
+
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const kpis = [
+    {
+      label: "Prospects ce mois",
+      value: stats.prospects_this_month,
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+        </svg>
+      ),
+      color: "#6366f1",
+    },
+    {
+      label: "Devis en attente",
+      value: stats.devis_en_attente,
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        </svg>
+      ),
+      color: "#f59e0b",
+    },
+    {
+      label: "RDV confirmés",
+      value: stats.rdv_confirmes,
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+        </svg>
+      ),
+      color: "#10b981",
+    },
+    {
+      label: "CA ce mois",
+      value: "0 €",
+      icon: (
+        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+        </svg>
+      ),
+      color: "#8b5cf6",
+    },
+  ];
 
   return (
     <div>
@@ -76,6 +154,7 @@ export default function DashboardPage() {
         Bienvenue{firstName ? `, ${firstName}` : ""}
       </h1>
 
+      {/* KPI cards */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {kpis.map((kpi) => (
           <div
@@ -95,6 +174,112 @@ export default function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Prospects à relancer */}
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Prospects à relancer aujourd&apos;hui
+          <span className="ml-2 text-sm font-normal text-gray-400">({relances.length})</span>
+        </h2>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-[#6366f1] border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : relances.length === 0 ? (
+            <div className="text-center py-12">
+              <svg className="w-10 h-10 text-gray-200 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-gray-400 text-sm">Aucune relance à faire aujourd&apos;hui</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop table */}
+              <table className="w-full hidden md:table">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Nom</th>
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Téléphone</th>
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Ville</th>
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Statut</th>
+                    <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {relances.map((c) => (
+                    <tr
+                      key={c.id}
+                      className="hover:bg-gray-50/50 cursor-pointer transition-colors"
+                      onClick={() => router.push(`/app/prospects/${c.id}`)}
+                    >
+                      <td className="px-6 py-3.5 text-sm font-medium text-gray-900">
+                        {c.first_name} {c.last_name}
+                      </td>
+                      <td className="px-6 py-3.5 text-sm text-gray-600">{c.phone ?? "—"}</td>
+                      <td className="px-6 py-3.5 text-sm text-gray-600">{c.city ?? "—"}</td>
+                      <td className="px-6 py-3.5">{statusBadge(c.status)}</td>
+                      <td className="px-6 py-3.5 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFollowUpClientId(c.id);
+                          }}
+                          className="text-xs font-medium text-[#6366f1] hover:text-[#818cf8] transition-colors"
+                        >
+                          Relancer
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-gray-50">
+                {relances.map((c) => (
+                  <div
+                    key={c.id}
+                    className="p-4 cursor-pointer hover:bg-gray-50/50 transition-colors"
+                    onClick={() => router.push(`/app/prospects/${c.id}`)}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-gray-900 text-sm">
+                        {c.first_name} {c.last_name}
+                      </span>
+                      {statusBadge(c.status)}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-gray-500">
+                        {c.phone ?? "—"} · {c.city ?? "—"}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFollowUpClientId(c.id);
+                        }}
+                        className="text-xs font-medium text-[#6366f1]"
+                      >
+                        Relancer
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Follow-up modal */}
+      {followUpClientId && (
+        <NewFollowUpModal
+          clientId={followUpClientId}
+          onClose={() => setFollowUpClientId(null)}
+          onCreated={() => { setFollowUpClientId(null); fetchData(); }}
+        />
+      )}
     </div>
   );
 }

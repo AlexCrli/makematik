@@ -90,20 +90,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         setProfile(profileData);
 
         // Fetch organization
-        const { data: orgData } = await supabaseBrowser
+        const { data: orgData, error: orgError } = await supabaseBrowser
           .from("organizations")
           .select("id, name")
           .eq("id", profileData.organization_id)
           .single();
 
+        if (orgError) console.error("[layout] Org fetch error:", orgError.message);
         if (orgData) setOrganization(orgData);
 
         // Fetch companies
-        const { data: companiesData } = await supabaseBrowser
+        const { data: companiesData, error: compError } = await supabaseBrowser
           .from("companies")
           .select("id, name")
           .eq("organization_id", profileData.organization_id);
 
+        if (compError) console.error("[layout] Companies fetch error:", compError.message);
         if (companiesData && companiesData.length > 0) {
           setCompanies(companiesData);
           setSelectedCompany(companiesData[0].id);
@@ -188,7 +190,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </select>
           ) : (
             <div className="px-3 py-2 text-white/30 text-sm">
-              {organization?.name ?? "Chargement..."}
+              {organization?.name ?? (authChecked ? "Aucune société" : "Chargement...")}
             </div>
           )}
         </div>

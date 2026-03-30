@@ -7,7 +7,17 @@
       "Bash(cat C:/Users/alexc/Desktop/makematik/next.config.*)",
       "Bash(printf 'NEXT_PUBLIC_SUPABASE_URL=http://187.124.49.81:8000\\\\nNEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE\\\\nSUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJzZXJ2aWNlX3JvbGUiLAogICAgImlzcyI6ICJzdXBhYmFzZS1kZW1vIiwKICAgICJpYXQiOiAxNjQxNzY5MjAwLAogICAgImV4cCI6IDE3OTk1MzU2MDAKfQ.DaYlNEoUrrEn2Ig7tqibS-PHK5vgusbcbo7X36XVt4Q\\\\nN8N_WEBHOOK_URL=http://187.124.49.81:5678/webhook/ce7eaa1c-fd09-4802-a998-cd3251cf2fda\\\\n')",
       "Bash(\"C:/Users/alexc/Desktop/makematik/.env.local\")",
-      "Bash(xxd \"C:/Users/alexc/Desktop/makematik/.env.local\")"
+      "Bash(xxd \"C:/Users/alexc/Desktop/makematik/.env.local\")",
+      "Bash(xargs grep:*)",
+      "Bash(git -C /c/Users/alexc/Desktop/makematik log --oneline --all)",
+      "Bash(git -C /c/Users/alexc/Desktop/makematik show --name-only --oneline)",
+      "Bash(node:*)",
+      "Bash(npx tsc:*)",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/app/prospects/[id]/rdv\")",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/app/prospects/[id]/devis\")",
+      "Bash(grep -r \"a_rappeler\\\\|devis_envoye\\\\|rdv_confirme\\\\|perdu\\\\|to_call\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)",
+      "Bash(grep -r \"follow_ups\\\\|follow-ups\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)",
+      "Bash(grep -r \"created_by\\\\|created_at\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)"
     ]
   }
 }

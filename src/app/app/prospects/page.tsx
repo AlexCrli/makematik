@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-client";
 import { useAppContext } from "../context";
+import { NewFollowUpModal } from "./FollowUpModal";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -22,11 +24,11 @@ interface Client {
 const STATUSES = [
   { key: "all", label: "Tous" },
   { key: "new", label: "Nouveau", color: "bg-blue-100 text-blue-700" },
-  { key: "a_rappeler", label: "À rappeler", color: "bg-orange-100 text-orange-700" },
-  { key: "devis_envoye", label: "Devis envoyé", color: "bg-purple-100 text-purple-700" },
-  { key: "rdv_confirme", label: "RDV confirmé", color: "bg-green-100 text-green-700" },
+  { key: "to_recall", label: "À rappeler", color: "bg-orange-100 text-orange-700" },
+  { key: "quote_sent", label: "Devis envoyé", color: "bg-purple-100 text-purple-700" },
+  { key: "rdv_confirmed", label: "RDV confirmé", color: "bg-green-100 text-green-700" },
   { key: "client", label: "Client", color: "bg-teal-100 text-teal-700" },
-  { key: "perdu", label: "Perdu", color: "bg-red-100 text-red-700" },
+  { key: "lost", label: "Perdu", color: "bg-red-100 text-red-700" },
 ];
 
 function statusBadge(status: string) {
@@ -346,12 +348,14 @@ function Toggle({
 
 export default function ProspectsPage() {
   const { organizationId, selectedCompanyId } = useAppContext();
+  const router = useRouter();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeStatus, setActiveStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [followUpClientId, setFollowUpClientId] = useState<string | null>(null);
 
   const fetchClients = useCallback(async () => {
     if (!supabaseBrowser) {
@@ -502,7 +506,7 @@ export default function ProspectsPage() {
                 <tr
                   key={c.id}
                   className="hover:bg-gray-50/50 cursor-pointer transition-colors"
-                  onClick={() => console.log("Open prospect", c.id)}
+                  onClick={() => router.push(`/app/prospects/${c.id}`)}
                 >
                   <td className="px-6 py-3.5 text-sm font-medium text-gray-900">
                     {c.first_name} {c.last_name}
@@ -520,7 +524,7 @@ export default function ProspectsPage() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        console.log("Relancer", c.id);
+                        setFollowUpClientId(c.id);
                       }}
                       className="text-xs font-medium text-[#6366f1] hover:text-[#818cf8] transition-colors"
                     >
@@ -549,7 +553,7 @@ export default function ProspectsPage() {
             <div
               key={c.id}
               className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-2"
-              onClick={() => console.log("Open prospect", c.id)}
+              onClick={() => router.push(`/app/prospects/${c.id}`)}
             >
               <div className="flex items-center justify-between">
                 <span className="font-medium text-gray-900 text-sm">
@@ -571,7 +575,7 @@ export default function ProspectsPage() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    console.log("Relancer", c.id);
+                    setFollowUpClientId(c.id);
                   }}
                   className="text-xs font-medium text-[#6366f1]"
                 >
@@ -583,13 +587,22 @@ export default function ProspectsPage() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal — nouveau prospect */}
       {showModal && (
         <NewProspectModal
           onClose={() => setShowModal(false)}
           onCreated={fetchClients}
           organizationId={organizationId}
           companyId={selectedCompanyId}
+        />
+      )}
+
+      {/* Modal — relance */}
+      {followUpClientId && (
+        <NewFollowUpModal
+          clientId={followUpClientId}
+          onClose={() => setFollowUpClientId(null)}
+          onCreated={() => { setFollowUpClientId(null); fetchClients(); }}
         />
       )}
     </div>
