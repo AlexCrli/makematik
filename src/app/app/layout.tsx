@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-client";
+import { AppContext } from "./context";
 
 interface Profile {
   first_name: string;
@@ -250,7 +251,18 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </span>
         </header>
 
-        <main className="flex-1 p-6 lg:p-8">{children}</main>
+        <main className="flex-1 p-6 lg:p-8">
+            <AppContext.Provider
+              value={{
+                organizationId: profile?.organization_id ?? null,
+                selectedCompanyId: selectedCompany || null,
+                setSelectedCompanyId: setSelectedCompany,
+                companies,
+              }}
+            >
+              {children}
+            </AppContext.Provider>
+          </main>
       </div>
     </div>
   );
