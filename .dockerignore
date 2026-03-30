@@ -1,0 +1,7 @@
+node_modules
+.next
+.git
+app
+README.md
+CLAUDE.md
+AGENTS.md
