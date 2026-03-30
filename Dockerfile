@@ -5,6 +5,10 @@ RUN npm ci
 COPY src ./src
 COPY public ./public
 COPY next.config.mjs tsconfig.json tailwind.config.ts postcss.config.mjs ./
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 RUN npm run build
 
 FROM node:20-alpine
