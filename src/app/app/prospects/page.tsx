@@ -46,9 +46,23 @@ function statusBadge(status: string) {
 /*  Modal: New Prospect Form (3 steps)                                 */
 /* ------------------------------------------------------------------ */
 
-const HEIGHT_OPTIONS = ["Faible", "Moyen", "Élevé", "Très élevé"];
-const LAST_MAINTENANCE = ["Moins d'1 an", "1-2 ans", "Plus de 2 ans", "Jamais"];
-const SOURCE_OPTIONS = ["Téléphone", "Formulaire web", "Bouche à oreille"];
+const HEIGHT_OPTIONS = [
+  { value: "low", label: "Bas" },
+  { value: "medium", label: "Moyen" },
+  { value: "high", label: "Haut" },
+  { value: "very_high", label: "Très haut" },
+];
+const LAST_MAINTENANCE = [
+  { value: "less_1y", label: "Moins d'1 an" },
+  { value: "1_2y", label: "1-2 ans" },
+  { value: "more_2y", label: "Plus de 2 ans" },
+  { value: "never", label: "Jamais" },
+];
+const SOURCE_OPTIONS = [
+  { value: "phone", label: "Téléphone" },
+  { value: "web", label: "Web" },
+  { value: "referral", label: "Recommandation" },
+];
 
 function NewProspectModal({
   onClose,
@@ -232,7 +246,7 @@ function NewProspectModal({
                 <label className={labelCls}>Hauteur des groupes</label>
                 <select className={inputCls} value={heightGroupes} onChange={(e) => setHeightGroupes(e.target.value)}>
                   <option value="">Sélectionner</option>
-                  {HEIGHT_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+                  {HEIGHT_OPTIONS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
                 </select>
               </div>
 
@@ -253,14 +267,14 @@ function NewProspectModal({
                 <label className={labelCls}>Dernier entretien</label>
                 <select className={inputCls} value={lastMaintenance} onChange={(e) => setLastMaintenance(e.target.value)}>
                   <option value="">Sélectionner</option>
-                  {LAST_MAINTENANCE.map((m) => <option key={m} value={m}>{m}</option>)}
+                  {LAST_MAINTENANCE.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
               <div>
                 <label className={labelCls}>Source</label>
                 <select className={inputCls} value={source} onChange={(e) => setSource(e.target.value)}>
                   <option value="">Sélectionner</option>
-                  {SOURCE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {SOURCE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
               </div>
               <div>

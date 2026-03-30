@@ -54,9 +54,6 @@ export async function GET(request: Request) {
       .from("clients")
       .select("id, first_name, last_name, phone, city, status, next_contact_date")
       .eq("organization_id", organizationId)
-      .neq("status", "new")
-      .neq("status", "client")
-      .neq("status", "lost")
       .lte("next_contact_date", today)
       .order("next_contact_date", { ascending: true });
 

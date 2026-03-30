@@ -64,9 +64,23 @@ const FOLLOW_UP_TYPES = [
   { key: "voicemail", label: "Message vocal", icon: "🎙️" },
 ];
 
-const HEIGHT_OPTIONS = ["Faible", "Moyen", "Élevé", "Très élevé"];
-const LAST_MAINTENANCE = ["Moins d'1 an", "1-2 ans", "Plus de 2 ans", "Jamais"];
-const SOURCE_OPTIONS = ["Téléphone", "Formulaire web", "Bouche à oreille"];
+const HEIGHT_OPTIONS = [
+  { value: "low", label: "Bas" },
+  { value: "medium", label: "Moyen" },
+  { value: "high", label: "Haut" },
+  { value: "very_high", label: "Très haut" },
+];
+const LAST_MAINTENANCE = [
+  { value: "less_1y", label: "Moins d'1 an" },
+  { value: "1_2y", label: "1-2 ans" },
+  { value: "more_2y", label: "Plus de 2 ans" },
+  { value: "never", label: "Jamais" },
+];
+const SOURCE_OPTIONS = [
+  { value: "phone", label: "Téléphone" },
+  { value: "web", label: "Web" },
+  { value: "referral", label: "Recommandation" },
+];
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -263,7 +277,7 @@ function EditModal({
             <label className={labelCls}>Hauteur des groupes</label>
             <select className={inputCls} value={heightGroupes} onChange={(e) => setHeightGroupes(e.target.value)}>
               <option value="">Sélectionner</option>
-              {HEIGHT_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+              {HEIGHT_OPTIONS.map((h) => <option key={h.value} value={h.value}>{h.label}</option>)}
             </select>
           </div>
           <div className="space-y-3">
@@ -277,14 +291,14 @@ function EditModal({
             <label className={labelCls}>Dernier entretien</label>
             <select className={inputCls} value={lastMaintenance} onChange={(e) => setLastMaintenance(e.target.value)}>
               <option value="">Sélectionner</option>
-              {LAST_MAINTENANCE.map((m) => <option key={m} value={m}>{m}</option>)}
+              {LAST_MAINTENANCE.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
           <div>
             <label className={labelCls}>Source</label>
             <select className={inputCls} value={source} onChange={(e) => setSource(e.target.value)}>
               <option value="">Sélectionner</option>
-              {SOURCE_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+              {SOURCE_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
           <div>
@@ -424,11 +438,11 @@ export default function ProspectDetailPage() {
     { label: "Nombre de splits", value: client.nb_splits?.toString() ?? "—" },
     { label: "Gainable", value: client.gainable ? "Oui" : "Non" },
     { label: "Groupes extérieurs", value: client.nb_groups_ext?.toString() ?? "—" },
-    { label: "Hauteur groupe", value: client.height_group ?? "—" },
+    { label: "Hauteur groupe", value: HEIGHT_OPTIONS.find((h) => h.value === client.height_group)?.label ?? client.height_group ?? "—" },
     { label: "Accès difficile", value: client.difficult_access ? "Oui" : "Non" },
     { label: "Ascenseur", value: client.has_elevator ? "Oui" : "Non" },
-    { label: "Dernier entretien", value: client.last_maintenance ?? "—" },
-    { label: "Source", value: client.source ?? "—" },
+    { label: "Dernier entretien", value: LAST_MAINTENANCE.find((m) => m.value === client.last_maintenance)?.label ?? client.last_maintenance ?? "—" },
+    { label: "Source", value: SOURCE_OPTIONS.find((s) => s.value === client.source)?.label ?? client.source ?? "—" },
     { label: "Notes", value: client.notes ?? "—" },
   ];
 
