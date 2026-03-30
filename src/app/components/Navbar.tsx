@@ -37,6 +37,12 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href="/app/login"
+            className="text-sm px-4 py-1.5 rounded-lg border border-accent text-accent hover:bg-accent hover:text-white transition-all duration-200"
+          >
+            Se connecter
+          </Link>
         </div>
 
         {/* Mobile toggle */}
@@ -72,6 +78,13 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          <Link
+            href="/app/login"
+            onClick={() => setOpen(false)}
+            className="inline-block text-sm px-4 py-1.5 mt-2 rounded-lg border border-accent text-accent hover:bg-accent hover:text-white transition-all duration-200"
+          >
+            Se connecter
+          </Link>
         </div>
       )}
     </nav>
