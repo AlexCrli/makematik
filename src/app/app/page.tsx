@@ -23,6 +23,7 @@ interface RelanceClient {
   city: string | null;
   status: string;
   next_contact_date: string | null;
+  company_name: string;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -203,6 +204,7 @@ export default function DashboardPage() {
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Nom</th>
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Téléphone</th>
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Ville</th>
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Société</th>
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Statut</th>
                     <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
                   </tr>
@@ -219,6 +221,7 @@ export default function DashboardPage() {
                       </td>
                       <td className="px-6 py-3.5 text-sm text-gray-600">{c.phone ?? "—"}</td>
                       <td className="px-6 py-3.5 text-sm text-gray-600">{c.city ?? "—"}</td>
+                      <td className="px-6 py-3.5 text-sm text-gray-600">{c.company_name}</td>
                       <td className="px-6 py-3.5">{statusBadge(c.status)}</td>
                       <td className="px-6 py-3.5 text-right">
                         <button
@@ -252,7 +255,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
-                        {c.phone ?? "—"} · {c.city ?? "—"}
+                        {c.company_name} · {c.phone ?? "—"} · {c.city ?? "—"}
                       </span>
                       <button
                         onClick={(e) => {

@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
 
-/** Verify token and return user + organization_id, or an error response. */
 async function authenticate(request: Request) {
   if (!supabaseUrl || !serviceKey) {
     return { error: NextResponse.json({ error: "Supabase not configured" }, { status: 500 }) };
@@ -35,7 +34,7 @@ async function authenticate(request: Request) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  GET — list clients for the user's organization                     */
+/*  GET — pricing list (optionally filtered by company)                */
 /* ------------------------------------------------------------------ */
 
 export async function GET(request: Request) {
@@ -46,33 +45,42 @@ export async function GET(request: Request) {
     const { supabase, organizationId } = auth;
     const { searchParams } = new URL(request.url);
     const companyId = searchParams.get("company_id");
+    const includeGeneral = searchParams.get("include_general") === "true";
+    const activeOnly = searchParams.get("all") !== "true";
 
     let query = supabase
-      .from("clients")
-      .select("id, first_name, last_name, phone, city, status, nb_splits, next_contact_date, company_id")
+      .from("pricing")
+      .select("id, label, price_ht, unit, is_active, company_id")
       .eq("organization_id", organizationId)
-      .order("created_at", { ascending: false });
+      .order("label");
 
-    if (companyId) {
+    if (activeOnly) {
+      query = query.eq("is_active", true);
+    }
+
+    if (companyId && includeGeneral) {
+      // Fetch tarifs for this company + general tarifs (company_id IS NULL)
+      query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+    } else if (companyId) {
       query = query.eq("company_id", companyId);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("[api/clients GET] Error:", error.message);
-      return NextResponse.json({ clients: [] });
+      console.error("[api/pricing GET] Error:", error.message);
+      return NextResponse.json({ pricing: [] });
     }
 
-    return NextResponse.json({ clients: data });
+    return NextResponse.json({ pricing: data });
   } catch (err) {
-    console.error("[api/clients GET] Unexpected:", err);
-    return NextResponse.json({ clients: [] });
+    console.error("[api/pricing GET] Unexpected:", err);
+    return NextResponse.json({ pricing: [] });
   }
 }
 
 /* ------------------------------------------------------------------ */
-/*  POST — create a new client                                         */
+/*  POST — create a new pricing item                                   */
 /* ------------------------------------------------------------------ */
 
 export async function POST(request: Request) {
@@ -83,40 +91,35 @@ export async function POST(request: Request) {
     const { supabase, organizationId } = auth;
     const body = await request.json();
 
+    if (!body.label || body.price_ht === undefined) {
+      return NextResponse.json({ error: "label et price_ht sont requis" }, { status: 400 });
+    }
+
     const row = {
       organization_id: organizationId,
       company_id: body.company_id || null,
-      first_name: body.first_name,
-      last_name: body.last_name,
-      email: body.email || null,
-      phone: body.phone || null,
-      address: body.address || null,
-      postal_code: body.postal_code || null,
-      city: body.city || null,
-      nb_splits: body.nb_splits ?? null,
-      gainable: body.gainable ?? false,
-      nb_groups_ext: body.nb_groups_ext ?? null,
-      height_group: body.height_group || null,
-      difficult_access: body.difficult_access ?? false,
-      has_elevator: body.has_elevator ?? false,
-      last_maintenance: body.last_maintenance || null,
-      source: body.source || null,
-      notes: body.notes || null,
+      label: body.label,
+      price_ht: body.price_ht,
+      unit: body.unit || "split",
+      is_active: body.is_active ?? true,
     };
 
-    console.log("[api/clients POST] Inserting:", JSON.stringify(row));
+    console.log("[api/pricing POST] Inserting:", JSON.stringify(row));
 
-    const { data, error } = await supabase.from("clients").insert([row]).select().single();
+    const { data, error } = await supabase
+      .from("pricing")
+      .insert([row])
+      .select()
+      .single();
 
     if (error) {
-      console.error("[api/clients POST] Error:", error.message, error.details, error.hint);
+      console.error("[api/pricing POST] Error:", error.message);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    console.log("[api/clients POST] Success:", data.id);
-    return NextResponse.json({ success: true, client: data });
+    return NextResponse.json({ success: true, pricing: data });
   } catch (err) {
-    console.error("[api/clients POST] Unexpected:", err);
+    console.error("[api/pricing POST] Unexpected:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

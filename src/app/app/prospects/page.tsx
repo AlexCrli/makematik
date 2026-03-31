@@ -19,6 +19,7 @@ interface Client {
   status: string;
   nb_splits: number | null;
   next_contact_date: string | null;
+  company_id: string | null;
 }
 
 const STATUSES = [
@@ -67,18 +68,17 @@ const SOURCE_OPTIONS = [
 function NewProspectModal({
   onClose,
   onCreated,
-  organizationId,
-  companyId,
+  companies,
 }: {
   onClose: () => void;
   onCreated: () => void;
-  organizationId: string | null;
-  companyId: string | null;
+  companies: { id: string; name: string }[];
 }) {
   const [step, setStep] = useState(1);
   const [sending, setSending] = useState(false);
 
   // Step 1
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -103,7 +103,7 @@ function NewProspectModal({
   async function handleSubmit() {
     setSending(true);
     const payload = {
-      company_id: companyId || null,
+      company_id: selectedCompanyId || null,
       first_name: firstName,
       last_name: lastName,
       email: email || null,
@@ -193,6 +193,15 @@ function NewProspectModal({
           {step === 1 && (
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Coordonnées</h3>
+              <div>
+                <label className={labelCls}>Société</label>
+                <select className={inputCls} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
+                  <option value="">Aucune société</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className={labelCls}>Prénom *</label>
@@ -361,12 +370,13 @@ function Toggle({
 /* ------------------------------------------------------------------ */
 
 export default function ProspectsPage() {
-  const { organizationId, selectedCompanyId } = useAppContext();
+  const { companies } = useAppContext();
   const router = useRouter();
 
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeStatus, setActiveStatus] = useState("all");
+  const [filterCompany, setFilterCompany] = useState("all");
   const [search, setSearch] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [followUpClientId, setFollowUpClientId] = useState<string | null>(null);
@@ -385,11 +395,8 @@ export default function ProspectsPage() {
       return;
     }
 
-    const params = new URLSearchParams();
-    if (selectedCompanyId) params.set("company_id", selectedCompanyId);
-
     try {
-      const res = await fetch(`/api/clients?${params}`, {
+      const res = await fetch("/api/clients", {
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
       const json = await res.json();
@@ -399,14 +406,20 @@ export default function ProspectsPage() {
     }
 
     setLoading(false);
-  }, [selectedCompanyId]);
+  }, []);
 
   useEffect(() => {
     fetchClients();
   }, [fetchClients]);
 
+  function companyName(companyId: string | null) {
+    if (!companyId) return "—";
+    return companies.find((co) => co.id === companyId)?.name ?? "—";
+  }
+
   // Filter
   const filtered = clients.filter((c) => {
+    if (filterCompany !== "all" && c.company_id !== filterCompany) return false;
     if (activeStatus !== "all" && c.status !== activeStatus) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -431,19 +444,31 @@ export default function ProspectsPage() {
           <h1 className="text-2xl font-bold text-gray-900">
             Prospects{" "}
             <span className="text-base font-normal text-gray-400">
-              ({clients.length})
+              ({filtered.length})
             </span>
           </h1>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#6366f1] hover:bg-[#818cf8] text-white text-sm font-medium rounded-lg transition-colors shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          Nouveau prospect
-        </button>
+        <div className="flex items-center gap-3">
+          <select
+            value={filterCompany}
+            onChange={(e) => setFilterCompany(e.target.value)}
+            className="px-3 py-2.5 rounded-lg bg-white border border-gray-200 text-gray-900 text-sm focus:outline-none focus:border-[#6366f1]/50 focus:ring-2 focus:ring-[#6366f1]/10 transition-all"
+          >
+            <option value="all">Toutes les sociétés</option>
+            {companies.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#6366f1] hover:bg-[#818cf8] text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Nouveau prospect
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -509,8 +534,8 @@ export default function ProspectsPage() {
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Nom</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Téléphone</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Ville</th>
+                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Société</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Statut</th>
-                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Splits</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Relance</th>
                 <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
               </tr>
@@ -527,8 +552,8 @@ export default function ProspectsPage() {
                   </td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">{c.phone ?? "—"}</td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">{c.city ?? "—"}</td>
+                  <td className="px-6 py-3.5 text-sm text-gray-600">{companyName(c.company_id)}</td>
                   <td className="px-6 py-3.5">{statusBadge(c.status)}</td>
-                  <td className="px-6 py-3.5 text-sm text-gray-600">{c.nb_splits ?? "—"}</td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">
                     {c.next_contact_date
                       ? new Date(c.next_contact_date).toLocaleDateString("fr-FR")
@@ -606,8 +631,7 @@ export default function ProspectsPage() {
         <NewProspectModal
           onClose={() => setShowModal(false)}
           onCreated={fetchClients}
-          organizationId={organizationId}
-          companyId={selectedCompanyId}
+          companies={companies}
         />
       )}
 
@@ -615,6 +639,7 @@ export default function ProspectsPage() {
       {followUpClientId && (
         <NewFollowUpModal
           clientId={followUpClientId}
+          companyId={clients.find((c) => c.id === followUpClientId)?.company_id}
           onClose={() => setFollowUpClientId(null)}
           onCreated={() => { setFollowUpClientId(null); fetchClients(); }}
         />

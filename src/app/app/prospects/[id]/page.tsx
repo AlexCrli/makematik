@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase-client";
+import { useAppContext } from "../../context";
 import { NewFollowUpModal } from "../FollowUpModal";
 
 /* ------------------------------------------------------------------ */
@@ -11,6 +13,8 @@ import { NewFollowUpModal } from "../FollowUpModal";
 
 interface ClientDetail {
   id: string;
+  company_id: string | null;
+  company_name: string | null;
   first_name: string;
   last_name: string;
   email: string | null;
@@ -42,6 +46,15 @@ interface FollowUp {
   performed_by: string;
   performed_at: string;
   next_contact_date: string | null;
+}
+
+interface QuoteListItem {
+  id: string;
+  quote_number: string;
+  total_ttc: number;
+  status: string;
+  created_at: string;
+  company_name: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,14 +160,17 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 
 function EditModal({
   client,
+  companies,
   onClose,
   onSaved,
 }: {
   client: ClientDetail;
+  companies: { id: string; name: string }[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [companyId, setCompanyId] = useState(client.company_id ?? "");
   const [firstName, setFirstName] = useState(client.first_name);
   const [lastName, setLastName] = useState(client.last_name);
   const [email, setEmail] = useState(client.email ?? "");
@@ -182,6 +198,7 @@ function EditModal({
         method: "PUT",
         headers: authHeaders(token),
         body: JSON.stringify({
+          company_id: companyId || null,
           first_name: firstName,
           last_name: lastName,
           email: email || null,
@@ -228,6 +245,16 @@ function EditModal({
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className={labelCls}>Société</label>
+            <select className={inputCls} value={companyId} onChange={(e) => setCompanyId(e.target.value)}>
+              <option value="">Aucune société</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Coordonnées</h3>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -331,9 +358,11 @@ function EditModal({
 export default function ProspectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { companies } = useAppContext();
 
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [quotes, setQuotes] = useState<QuoteListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [showFollowUp, setShowFollowUp] = useState(false);
@@ -371,10 +400,26 @@ export default function ProspectDetailPage() {
     }
   }, [id]);
 
+  const fetchQuotes = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+
+    try {
+      const res = await fetch(`/api/quotes?client_id=${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      setQuotes(json.quotes ?? []);
+    } catch {
+      setQuotes([]);
+    }
+  }, [id]);
+
   useEffect(() => {
     fetchClient();
     fetchFollowUps();
-  }, [fetchClient, fetchFollowUps]);
+    fetchQuotes();
+  }, [fetchClient, fetchFollowUps, fetchQuotes]);
 
   async function handleStatusChange(newStatus: string) {
     if (!client) return;
@@ -463,10 +508,15 @@ export default function ProspectDetailPage() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="space-y-2">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">
                 {client.first_name} {client.last_name}
               </h1>
+              {client.company_name && (
+                <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                  {client.company_name}
+                </span>
+              )}
               {statusBadge(client.status)}
             </div>
             <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-500">
@@ -608,10 +658,73 @@ export default function ProspectDetailPage() {
         </div>
       </div>
 
+      {/* ---- DEVIS LIÉS ---- */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Devis liés
+            <span className="ml-1.5 text-gray-400">({quotes.length})</span>
+          </h2>
+          <Link
+            href={`/app/devis/nouveau?client_id=${client.id}${client.company_id ? `&company_id=${client.company_id}` : ""}`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6366f1] bg-[#6366f1]/5 hover:bg-[#6366f1]/10 rounded-lg transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Nouveau devis
+          </Link>
+        </div>
+
+        {quotes.length === 0 ? (
+          <div className="text-center py-8">
+            <svg className="w-10 h-10 text-gray-200 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <p className="text-gray-400 text-sm">Aucun devis pour ce prospect</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {quotes.map((q) => {
+              const qs = [
+                { key: "draft", label: "Brouillon", color: "bg-gray-100 text-gray-700" },
+                { key: "sent", label: "Envoyé", color: "bg-blue-100 text-blue-700" },
+                { key: "accepted", label: "Accepté", color: "bg-green-100 text-green-700" },
+                { key: "refused", label: "Refusé", color: "bg-red-100 text-red-700" },
+                { key: "expired", label: "Expiré", color: "bg-orange-100 text-orange-700" },
+              ].find((s) => s.key === q.status);
+              return (
+                <Link
+                  key={q.id}
+                  href={`/app/devis/${q.id}`}
+                  className="flex items-center justify-between p-3 rounded-lg bg-gray-50/80 border border-gray-100 hover:border-[#6366f1]/30 transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-gray-900">{q.quote_number}</span>
+                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${qs?.color ?? "bg-gray-100 text-gray-600"}`}>
+                      {qs?.label ?? q.status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm font-medium text-gray-900">
+                      {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(q.total_ttc)}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {new Date(q.created_at).toLocaleDateString("fr-FR")}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* Modals */}
       {showEdit && (
         <EditModal
           client={client}
+          companies={companies}
           onClose={() => setShowEdit(false)}
           onSaved={fetchClient}
         />
@@ -619,6 +732,7 @@ export default function ProspectDetailPage() {
       {showFollowUp && (
         <NewFollowUpModal
           clientId={client.id}
+          companyId={client.company_id}
           onClose={() => setShowFollowUp(false)}
           onCreated={() => { fetchClient(); fetchFollowUps(); }}
         />

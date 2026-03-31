@@ -45,29 +45,47 @@ export async function GET(request: Request) {
     // Prospects to follow up: status "new" OR next_contact_date <= today
     const { data: newProspects } = await supabase
       .from("clients")
-      .select("id, first_name, last_name, phone, city, status, next_contact_date")
+      .select("id, first_name, last_name, phone, city, status, next_contact_date, company_id")
       .eq("organization_id", organizationId)
       .eq("status", "new")
       .order("created_at", { ascending: false });
 
     const { data: overdueProspects } = await supabase
       .from("clients")
-      .select("id, first_name, last_name, phone, city, status, next_contact_date")
+      .select("id, first_name, last_name, phone, city, status, next_contact_date, company_id")
       .eq("organization_id", organizationId)
       .lte("next_contact_date", today)
       .order("next_contact_date", { ascending: true });
 
     // Merge and deduplicate
     const seen = new Set<string>();
-    const relances = [];
+    const all = [];
     for (const list of [overdueProspects ?? [], newProspects ?? []]) {
       for (const p of list) {
         if (!seen.has(p.id)) {
           seen.add(p.id);
-          relances.push(p);
+          all.push(p);
         }
       }
     }
+
+    // Fetch company names
+    const companyIds = [...new Set(all.map((p) => p.company_id).filter(Boolean))];
+    let companiesMap: Record<string, string> = {};
+    if (companyIds.length > 0) {
+      const { data: companies } = await supabase
+        .from("companies")
+        .select("id, name")
+        .in("id", companyIds);
+      if (companies) {
+        companiesMap = Object.fromEntries(companies.map((c) => [c.id, c.name]));
+      }
+    }
+
+    const relances = all.map((p) => ({
+      ...p,
+      company_name: p.company_id ? (companiesMap[p.company_id] ?? "—") : "—",
+    }));
 
     return NextResponse.json({ relances });
   } catch (err) {

@@ -17,7 +17,10 @@
       "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/app/prospects/[id]/devis\")",
       "Bash(grep -r \"a_rappeler\\\\|devis_envoye\\\\|rdv_confirme\\\\|perdu\\\\|to_call\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)",
       "Bash(grep -r \"follow_ups\\\\|follow-ups\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)",
-      "Bash(grep -r \"created_by\\\\|created_at\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)"
+      "Bash(grep -r \"created_by\\\\|created_at\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)"
     ]
   }
 }

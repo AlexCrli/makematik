@@ -41,6 +41,24 @@ const navLinks = [
       </svg>
     ),
   },
+  {
+    href: "/app/devis",
+    label: "Devis",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+      </svg>
+    ),
+  },
+  {
+    href: "/app/tarifs",
+    label: "Tarifs",
+    icon: (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+      </svg>
+    ),
+  },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -50,7 +68,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<string>("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const isLoginPage = pathname === "/app/login";
@@ -77,38 +94,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const user = session.user;
+      const authHeader = { Authorization: `Bearer ${session.access_token}` };
 
-      // Fetch profile
-      const { data: profileData } = await supabaseBrowser
-        .from("profiles")
-        .select("first_name, last_name, organization_id")
-        .eq("id", user.id)
-        .single();
+      // Fetch profile + companies in parallel via API (bypasses RLS)
+      const [profileRes, companiesRes] = await Promise.all([
+        fetch("/api/profile", { headers: authHeader }).catch(() => null),
+        fetch("/api/companies", { headers: authHeader }).catch(() => null),
+      ]);
 
-      if (profileData) {
-        setProfile(profileData);
+      // Handle profile
+      if (profileRes && profileRes.ok) {
+        const profileJson = await profileRes.json();
+        if (profileJson.profile) {
+          setProfile(profileJson.profile);
+          if (profileJson.organization) {
+            setOrganization(profileJson.organization);
+          }
+        }
+      }
 
-        // Fetch organization
-        const { data: orgData, error: orgError } = await supabaseBrowser
-          .from("organizations")
-          .select("id, name")
-          .eq("id", profileData.organization_id)
-          .single();
-
-        if (orgError) console.error("[layout] Org fetch error:", orgError.message);
-        if (orgData) setOrganization(orgData);
-
-        // Fetch companies
-        const { data: companiesData, error: compError } = await supabaseBrowser
-          .from("companies")
-          .select("id, name")
-          .eq("organization_id", profileData.organization_id);
-
-        if (compError) console.error("[layout] Companies fetch error:", compError.message);
-        if (companiesData && companiesData.length > 0) {
+      // Handle companies
+      if (companiesRes && companiesRes.ok) {
+        const compJson = await companiesRes.json();
+        const companiesData = compJson.companies ?? [];
+        if (companiesData.length > 0) {
           setCompanies(companiesData);
-          setSelectedCompany(companiesData[0].id);
         }
       }
 
@@ -124,9 +134,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
     window.location.href = "/app/login";
   }
-
-  const selectedCompanyName =
-    companies.find((c) => c.id === selectedCompany)?.name ?? "—";
 
   if (isLoginPage) {
     return <>{children}</>;
@@ -161,38 +168,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         {/* Logo */}
         <div className="px-6 h-16 flex items-center border-b border-white/10">
-          <span className="text-lg font-bold text-white tracking-tight">
-            Make<span className="text-[#818cf8]">matik</span>
-          </span>
-        </div>
-
-        {/* Company selector */}
-        <div className="px-4 py-4 border-b border-white/10">
-          <label className="block text-[10px] uppercase tracking-wider text-white/40 mb-1.5 px-2">
-            Société
-          </label>
-          {companies.length > 0 ? (
-            <select
-              value={selectedCompany}
-              onChange={(e) => setSelectedCompany(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-white text-sm focus:outline-none focus:border-[#818cf8]/50 transition-colors appearance-none"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 10px center",
-              }}
-            >
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className="px-3 py-2 text-white/30 text-sm">
-              {organization?.name ?? (authChecked ? "Aucune société" : "Chargement...")}
-            </div>
-          )}
+          <img
+            src="/netvapeur-logo.webp"
+            alt={organization?.name ?? "NetVapeur"}
+            className="h-7 object-contain"
+            style={{ filter: "brightness(0) invert(1)" }}
+          />
         </div>
 
         {/* Navigation */}
@@ -248,17 +229,17 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />
             </svg>
           </button>
-          <span className="ml-3 text-sm font-semibold text-gray-900">
-            Make<span className="text-[#6366f1]">matik</span>
-          </span>
+          <img
+            src="/netvapeur-logo.webp"
+            alt="NetVapeur"
+            className="ml-3 h-6 object-contain"
+          />
         </header>
 
         <main className="flex-1 p-6 lg:p-8">
             <AppContext.Provider
               value={{
                 organizationId: profile?.organization_id ?? null,
-                selectedCompanyId: selectedCompany || null,
-                setSelectedCompanyId: setSelectedCompany,
                 companies,
               }}
             >

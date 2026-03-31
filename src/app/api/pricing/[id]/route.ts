@@ -34,50 +34,7 @@ async function authenticate(request: Request) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  GET — single client detail                                         */
-/* ------------------------------------------------------------------ */
-
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } },
-) {
-  try {
-    const auth = await authenticate(request);
-    if ("error" in auth) return auth.error;
-
-    const { supabase, organizationId } = auth;
-
-    const { data, error } = await supabase
-      .from("clients")
-      .select("*")
-      .eq("id", params.id)
-      .eq("organization_id", organizationId)
-      .single();
-
-    if (error || !data) {
-      return NextResponse.json({ error: "Client not found" }, { status: 404 });
-    }
-
-    // Lookup company name
-    let company_name: string | null = null;
-    if (data.company_id) {
-      const { data: company } = await supabase
-        .from("companies")
-        .select("name")
-        .eq("id", data.company_id)
-        .single();
-      if (company) company_name = company.name;
-    }
-
-    return NextResponse.json({ client: { ...data, company_name } });
-  } catch (err) {
-    console.error("[api/clients/[id] GET] Unexpected:", err);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  PUT — update client (info + status)                                */
+/*  PUT — update a pricing item                                        */
 /* ------------------------------------------------------------------ */
 
 export async function PUT(
@@ -93,25 +50,18 @@ export async function PUT(
 
     // Verify ownership
     const { data: existing } = await supabase
-      .from("clients")
+      .from("pricing")
       .select("id")
       .eq("id", params.id)
       .eq("organization_id", organizationId)
       .single();
 
     if (!existing) {
-      return NextResponse.json({ error: "Client not found" }, { status: 404 });
+      return NextResponse.json({ error: "Pricing not found" }, { status: 404 });
     }
 
     const updates: Record<string, unknown> = {};
-    const allowed = [
-      "first_name", "last_name", "email", "phone",
-      "address", "postal_code", "city", "company_id",
-      "nb_splits", "gainable", "nb_groups_ext", "height_group",
-      "difficult_access", "has_elevator",
-      "last_maintenance", "source", "notes",
-      "status", "next_contact_date",
-    ];
+    const allowed = ["label", "price_ht", "unit", "company_id", "is_active"];
 
     for (const key of allowed) {
       if (key in body) updates[key] = body[key];
@@ -122,20 +72,62 @@ export async function PUT(
     }
 
     const { data, error } = await supabase
-      .from("clients")
+      .from("pricing")
       .update(updates)
       .eq("id", params.id)
       .select()
       .single();
 
     if (error) {
-      console.error("[api/clients/[id] PUT] Error:", error.message);
+      console.error("[api/pricing/[id] PUT] Error:", error.message);
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, client: data });
+    return NextResponse.json({ success: true, pricing: data });
   } catch (err) {
-    console.error("[api/clients/[id] PUT] Unexpected:", err);
+    console.error("[api/pricing/[id] PUT] Unexpected:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  DELETE — deactivate a pricing item (set is_active=false)           */
+/* ------------------------------------------------------------------ */
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const auth = await authenticate(request);
+    if ("error" in auth) return auth.error;
+
+    const { supabase, organizationId } = auth;
+
+    const { data: existing } = await supabase
+      .from("pricing")
+      .select("id")
+      .eq("id", params.id)
+      .eq("organization_id", organizationId)
+      .single();
+
+    if (!existing) {
+      return NextResponse.json({ error: "Pricing not found" }, { status: 404 });
+    }
+
+    const { error } = await supabase
+      .from("pricing")
+      .update({ is_active: false })
+      .eq("id", params.id);
+
+    if (error) {
+      console.error("[api/pricing/[id] DELETE] Error:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[api/pricing/[id] DELETE] Unexpected:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

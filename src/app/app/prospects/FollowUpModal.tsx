@@ -34,10 +34,12 @@ const btnCls = "px-4 py-2 text-sm font-medium rounded-lg transition-colors";
 
 export function NewFollowUpModal({
   clientId,
+  companyId,
   onClose,
   onCreated,
 }: {
   clientId: string;
+  companyId?: string | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -190,7 +192,7 @@ export function NewFollowUpModal({
               Prendre RDV
             </Link>
             <Link
-              href={`/app/prospects/${clientId}/devis`}
+              href={`/app/devis/nouveau?client_id=${clientId}${companyId ? `&company_id=${companyId}` : ""}`}
               className={`${btnCls} text-purple-700 border border-purple-200 bg-purple-50 hover:bg-purple-100`}
             >
               Créer un devis
