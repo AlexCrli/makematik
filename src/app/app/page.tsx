@@ -70,25 +70,18 @@ export default function DashboardPage() {
     const token = await getToken();
     if (!token) { setLoading(false); return; }
 
-    // Load profile name
-    if (supabaseBrowser) {
-      const { data: { user } } = await supabaseBrowser.auth.getUser();
-      if (user) {
-        const { data } = await supabaseBrowser
-          .from("profiles")
-          .select("first_name")
-          .eq("id", user.id)
-          .single();
-        if (data) setFirstName(data.first_name);
-      }
-    }
-
-    // Fetch stats + relances in parallel
+    // Fetch profile + stats + relances in parallel
     const headers = { Authorization: `Bearer ${token}` };
-    const [statsRes, relancesRes] = await Promise.all([
+    const [profileRes, statsRes, relancesRes] = await Promise.all([
+      fetch("/api/profile", { headers }),
       fetch("/api/dashboard/stats", { headers }),
       fetch("/api/dashboard/relances", { headers }),
     ]);
+
+    if (profileRes.ok) {
+      const pJson = await profileRes.json();
+      if (pJson.profile?.full_name) setFirstName(pJson.profile.full_name.split(" ")[0]);
+    }
 
     if (statsRes.ok) {
       const json = await statsRes.json();

@@ -186,7 +186,7 @@ export function NewFollowUpModal({
               Annuler
             </button>
             <Link
-              href={`/app/prospects/${clientId}/rdv`}
+              href={`/app/planning?prospect_id=${clientId}`}
               className={`${btnCls} text-green-700 border border-green-200 bg-green-50 hover:bg-green-100`}
             >
               Prendre RDV

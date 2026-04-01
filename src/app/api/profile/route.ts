@@ -26,11 +26,14 @@ export async function GET(request: Request) {
     }
 
     // Fetch profile
+    console.log("[api/profile GET] Looking up user:", user.id);
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("first_name, last_name, organization_id")
+      .select("full_name, organization_id, role, color")
       .eq("id", user.id)
       .single();
+
+    console.log("[api/profile GET] Profile result:", profile, "Error:", profileError?.message ?? "none");
 
     if (profileError || !profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 400 });
@@ -45,9 +48,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       profile: {
-        first_name: profile.first_name,
-        last_name: profile.last_name,
+        full_name: profile.full_name,
         organization_id: profile.organization_id,
+        role: profile.role,
+        color: profile.color,
       },
       organization: organization ?? null,
     });
