@@ -154,8 +154,8 @@ export async function POST(request: Request) {
     }
 
     // Create follow_up entry for history
+    let assigneeName = "un intervenant";
     try {
-      let assigneeName = "un intervenant";
       if (body.assigned_to) {
         const { data: assignee } = await supabase
           .from("profiles")
@@ -185,6 +185,65 @@ export async function POST(request: Request) {
       }
     } catch (fuErr) {
       console.error("[api/interventions POST] Follow-up unexpected error:", fuErr);
+    }
+
+    // Webhook n8n → Google Calendar
+    try {
+      const { data: clientInfo } = await supabase
+        .from("clients")
+        .select("first_name, last_name, phone, address, postal_code, city, nb_splits")
+        .eq("id", body.client_id)
+        .single();
+
+      let companyName = "";
+      if (body.company_id) {
+        const { data: company } = await supabase
+          .from("companies")
+          .select("name")
+          .eq("id", body.company_id)
+          .single();
+        if (company?.name) companyName = company.name;
+      }
+
+      // Build start/end datetimes in Europe/Paris (UTC+02:00)
+      const tz = "+02:00";
+      const offsetMs = 2 * 60 * 60 * 1000;
+      const startDatetime = `${body.scheduled_date}T${body.scheduled_time}${tz}`;
+      const durationMs = (body.duration_minutes ?? 60) * 60 * 1000;
+      const endUtc = new Date(new Date(startDatetime).getTime() + durationMs);
+      // Shift to local Paris time before extracting components
+      const endLocal = new Date(endUtc.getTime() + offsetMs);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const endDatetime =
+        `${endLocal.getUTCFullYear()}-${pad(endLocal.getUTCMonth() + 1)}-${pad(endLocal.getUTCDate())}` +
+        `T${pad(endLocal.getUTCHours())}:${pad(endLocal.getUTCMinutes())}:${pad(endLocal.getUTCSeconds())}${tz}`;
+
+      const webhookBody = {
+        client_name: clientInfo ? `${clientInfo.first_name} ${clientInfo.last_name}` : "",
+        phone: clientInfo?.phone ?? "",
+        address: clientInfo?.address ?? "",
+        postal_code: clientInfo?.postal_code ?? "",
+        city: clientInfo?.city ?? "",
+        nb_splits: clientInfo?.nb_splits ?? null,
+        company_name: companyName,
+        assigned_to_name: assigneeName,
+        start_datetime: startDatetime,
+        end_datetime: endDatetime,
+        notes: body.field_notes ?? "",
+        intervention_id: data.id,
+      };
+
+      const webhookRes = await fetch("https://n8n.makematik.com/webhook/intervention-created", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webhookBody),
+      });
+
+      if (!webhookRes.ok) {
+        console.error("[api/interventions POST] Webhook n8n error:", webhookRes.status, await webhookRes.text());
+      }
+    } catch (webhookErr) {
+      console.error("[api/interventions POST] Webhook n8n unexpected error:", webhookErr);
     }
 
     return NextResponse.json({ success: true, intervention: data });
