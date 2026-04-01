@@ -122,7 +122,10 @@ function addDays(d: Date, n: number): Date {
 }
 
 function fmt(d: Date): string {
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function fmtDateFr(d: Date): string {
@@ -533,7 +536,7 @@ function NewRdvModal({
   const [selectedClient, setSelectedClient] = useState<SearchClient | null>(prefillClient);
 
   const [assignedTo, setAssignedTo] = useState("");
-  const [date, setDate] = useState(prefillDate ?? new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(prefillDate ?? fmt(new Date()));
   const [time, setTime] = useState(prefillTime ?? "09:00");
   const [duration, setDuration] = useState(prefillClient ? durationFromSplits(prefillClient.nb_splits) : 60);
   const [notes, setNotes] = useState("");
