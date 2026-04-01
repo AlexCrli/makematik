@@ -205,18 +205,17 @@ export async function POST(request: Request) {
         if (company?.name) companyName = company.name;
       }
 
-      // Build start/end datetimes in Europe/Paris (UTC+02:00)
+      // Build start/end datetimes in Europe/Paris (UTC+02:00) — string only, no Date object
       const tz = "+02:00";
-      const offsetMs = 2 * 60 * 60 * 1000;
-      const startDatetime = `${body.scheduled_date}T${body.scheduled_time}${tz}`;
-      const durationMs = (body.duration_minutes ?? 60) * 60 * 1000;
-      const endUtc = new Date(new Date(startDatetime).getTime() + durationMs);
-      // Shift to local Paris time before extracting components
-      const endLocal = new Date(endUtc.getTime() + offsetMs);
       const pad = (n: number) => String(n).padStart(2, "0");
-      const endDatetime =
-        `${endLocal.getUTCFullYear()}-${pad(endLocal.getUTCMonth() + 1)}-${pad(endLocal.getUTCDate())}` +
-        `T${pad(endLocal.getUTCHours())}:${pad(endLocal.getUTCMinutes())}:${pad(endLocal.getUTCSeconds())}${tz}`;
+      const time = body.scheduled_time || "09:00";
+      const startDatetime = `${body.scheduled_date}T${time}:00${tz}`;
+
+      const [startH, startM] = time.split(":").map(Number);
+      const totalMinutes = startH * 60 + startM + (body.duration_minutes ?? 60);
+      const endH = Math.floor(totalMinutes / 60);
+      const endM = totalMinutes % 60;
+      const endDatetime = `${body.scheduled_date}T${pad(endH)}:${pad(endM)}:00${tz}`;
 
       const webhookBody = {
         client_name: clientInfo ? `${clientInfo.first_name} ${clientInfo.last_name}` : "",
