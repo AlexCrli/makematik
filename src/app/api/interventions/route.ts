@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getValidGoogleToken } from "@/lib/google-token";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -187,7 +188,7 @@ export async function POST(request: Request) {
       console.error("[api/interventions POST] Follow-up unexpected error:", fuErr);
     }
 
-    // Webhook n8n → Google Calendar
+    // Création directe dans Google Calendar (si l'intervenant est connecté)
     try {
       const { data: clientInfo } = await supabase
         .from("clients")
@@ -205,7 +206,6 @@ export async function POST(request: Request) {
         if (company?.name) companyName = company.name;
       }
 
-      // Build start/end datetimes in Europe/Paris (UTC+02:00) — string only, no Date object
       const tz = "+02:00";
       const pad = (n: number) => String(n).padStart(2, "0");
       const time = body.scheduled_time || "09:00";
@@ -217,32 +217,51 @@ export async function POST(request: Request) {
       const endM = totalMinutes % 60;
       const endDatetime = `${body.scheduled_date}T${pad(endH)}:${pad(endM)}:00${tz}`;
 
-      const webhookBody = {
-        client_name: clientInfo ? `${clientInfo.first_name} ${clientInfo.last_name}` : "",
-        phone: clientInfo?.phone ?? "",
-        address: clientInfo?.address ?? "",
-        postal_code: clientInfo?.postal_code ?? "",
-        city: clientInfo?.city ?? "",
-        nb_splits: clientInfo?.nb_splits ?? null,
-        company_name: companyName,
-        assigned_to_name: assigneeName,
-        start_datetime: startDatetime,
-        end_datetime: endDatetime,
-        notes: body.field_notes ?? "",
-        intervention_id: data.id,
-      };
+      const clientName = clientInfo ? `${clientInfo.first_name} ${clientInfo.last_name}` : "";
+      const location = clientInfo
+        ? [clientInfo.address, clientInfo.postal_code, clientInfo.city].filter(Boolean).join(", ")
+        : "";
+      const description = [
+        clientInfo?.phone ? `Tél: ${clientInfo.phone}` : "",
+        clientInfo?.nb_splits ? `Splits: ${clientInfo.nb_splits}` : "",
+        companyName ? `Société: ${companyName}` : "",
+        body.field_notes ? `Notes: ${body.field_notes}` : "",
+      ].filter(Boolean).join("\n");
 
-      const webhookRes = await fetch("https://n8n.makematik.com/webhook/intervention-created", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(webhookBody),
-      });
+      // Créer l'événement Google Calendar directement
+      const googleToken = await getValidGoogleToken(body.assigned_to);
+      if (googleToken) {
+        const gcalRes = await fetch(
+          "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${googleToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              summary: `RDV ${clientName}${companyName ? ` (${companyName})` : ""}`,
+              description,
+              location,
+              start: { dateTime: startDatetime, timeZone: "Europe/Paris" },
+              end: { dateTime: endDatetime, timeZone: "Europe/Paris" },
+            }),
+          },
+        );
 
-      if (!webhookRes.ok) {
-        console.error("[api/interventions POST] Webhook n8n error:", webhookRes.status, await webhookRes.text());
+        if (gcalRes.ok) {
+          const gcalEvent = await gcalRes.json();
+          // Stocker le google_event_id dans l'intervention
+          await supabase
+            .from("interventions")
+            .update({ google_event_id: gcalEvent.id })
+            .eq("id", data.id);
+        } else {
+          console.error("[api/interventions POST] Google Calendar error:", gcalRes.status, await gcalRes.text());
+        }
       }
-    } catch (webhookErr) {
-      console.error("[api/interventions POST] Webhook n8n unexpected error:", webhookErr);
+    } catch (gcalErr) {
+      console.error("[api/interventions POST] Google Calendar unexpected error:", gcalErr);
     }
 
     return NextResponse.json({ success: true, intervention: data });

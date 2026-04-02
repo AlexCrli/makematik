@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     console.log("[api/profile GET] Looking up user:", user.id);
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("full_name, organization_id, role, color")
+      .select("full_name, organization_id, role, color, google_calendar_connected, google_email")
       .eq("id", user.id)
       .single();
 
@@ -52,6 +52,8 @@ export async function GET(request: Request) {
         organization_id: profile.organization_id,
         role: profile.role,
         color: profile.color,
+        google_calendar_connected: profile.google_calendar_connected ?? false,
+        google_email: profile.google_email ?? null,
       },
       organization: organization ?? null,
     });

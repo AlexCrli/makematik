@@ -48,7 +48,7 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("id, full_name, role, color, share_personal_calendar")
+      .select("id, full_name, role, color, share_personal_calendar, google_calendar_connected, google_email")
       .eq("organization_id", organizationId)
       .order("full_name");
 

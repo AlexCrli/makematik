@@ -14,6 +14,19 @@ interface Profile {
   full_name: string;
   color: string | null;
   share_personal_calendar: boolean;
+  google_calendar_connected?: boolean;
+  google_email?: string | null;
+}
+
+interface GoogleCalEvent {
+  google_event_id: string;
+  title: string;
+  start_date: string;
+  start_time: string | null;
+  end_date: string | null;
+  end_time: string | null;
+  all_day: boolean;
+  profile_id: string;
 }
 
 interface ClientInfo {
@@ -174,6 +187,11 @@ export default function PlanningPage() {
   const [prefillDate, setPrefillDate] = useState<string | null>(null);
   const [prefillTime, setPrefillTime] = useState<string | null>(null);
 
+  // Google Calendar
+  const [googleCalEvents, setGoogleCalEvents] = useState<GoogleCalEvent[]>([]);
+  const [myGoogleConnected, setMyGoogleConnected] = useState(false);
+  const [myGoogleEmail, setMyGoogleEmail] = useState<string | null>(null);
+
   // Prospect banner mode
   const [pendingProspect, setPendingProspect] = useState<SearchClient | null>(null);
   const [loadingProspect, setLoadingProspect] = useState(false);
@@ -208,6 +226,13 @@ export default function PlanningPage() {
         }
         setProfiles(profs);
         setVisibleProfiles(new Set(profs.map((p: Profile) => p.id)));
+
+        // Statut Google Calendar du profil connecté
+        const myProfile = profs.find((p: Profile) => p.id === userId);
+        if (myProfile) {
+          setMyGoogleConnected(myProfile.google_calendar_connected ?? false);
+          setMyGoogleEmail(myProfile.google_email ?? null);
+        }
       } catch (err) {
         console.error("[planning] Profiles fetch error:", err);
       }
@@ -239,6 +264,32 @@ export default function PlanningPage() {
   const startStr = fmt(weekStart);
   const endStr = fmt(weekEnd);
 
+  // Fetch Google Calendar events for connected profiles
+  const fetchGoogleCalEvents = useCallback(async (profs: Profile[]) => {
+    const token = await getToken();
+    if (!token) return;
+    const headers = { Authorization: `Bearer ${token}` };
+
+    const connectedProfiles = profs.filter((p) => p.google_calendar_connected);
+    if (connectedProfiles.length === 0) { setGoogleCalEvents([]); return; }
+
+    const results = await Promise.all(
+      connectedProfiles.map(async (p) => {
+        try {
+          const res = await fetch(
+            `/api/google/calendar-events?profile_id=${p.id}&start_date=${startStr}&end_date=${endStr}`,
+            { headers },
+          );
+          if (!res.ok) return [];
+          const json = await res.json();
+          return (json.events ?? []).map((e: Omit<GoogleCalEvent, "profile_id">) => ({ ...e, profile_id: p.id }));
+        } catch { return []; }
+      }),
+    );
+
+    setGoogleCalEvents(results.flat());
+  }, [startStr, endStr]);
+
   const fetchEvents = useCallback(async () => {
     const token = await getToken();
     if (!token) { setLoading(false); return; }
@@ -258,7 +309,7 @@ export default function PlanningPage() {
     setLoading(false);
   }, [startStr, endStr]);
 
-  useEffect(() => { fetchEvents(); }, [fetchEvents]);
+  useEffect(() => { fetchEvents(); fetchGoogleCalEvents(profiles); }, [fetchEvents, fetchGoogleCalEvents, profiles]);
 
   // Navigation
   function goToday() {
@@ -306,6 +357,23 @@ export default function PlanningPage() {
   function isOwn(assignedTo: string): boolean { return assignedTo === currentUserId; }
   function isOwnCal(profileId: string): boolean { return profileId === currentUserId; }
 
+  // Google Calendar filtered events (visible profiles only for admin, all for tech)
+  const filteredGoogleEvents = isAdmin
+    ? googleCalEvents.filter((e) => visibleProfiles.has(e.profile_id))
+    : googleCalEvents;
+
+  async function handleGoogleDisconnect() {
+    const token = await getToken();
+    if (!token) return;
+    await fetch("/api/google/disconnect", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setMyGoogleConnected(false);
+    setMyGoogleEmail(null);
+    setGoogleCalEvents([]);
+  }
+
   const pendingCompanyName = pendingProspect?.company_id
     ? companies.find((c) => c.id === pendingProspect.company_id)?.name
     : null;
@@ -323,6 +391,31 @@ export default function PlanningPage() {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
             Nouveau RDV
           </button>
+        )}
+      </div>
+
+      {/* Google Calendar connection */}
+      <div className="mb-4 flex items-center gap-3">
+        {myGoogleConnected ? (
+          <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200 text-sm">
+            <svg className="w-4 h-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            <span className="text-green-700 font-medium">Google Calendar connecté</span>
+            {myGoogleEmail && <span className="text-gray-500">({myGoogleEmail})</span>}
+            <button
+              onClick={handleGoogleDisconnect}
+              className="ml-2 text-xs text-gray-400 hover:text-red-500 transition-colors"
+            >
+              Déconnecter
+            </button>
+          </div>
+        ) : (
+          <a
+            href={`/api/google/auth?profile_id=${currentUserId}`}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+            Connecter Google Calendar
+          </a>
         )}
       </div>
 
@@ -454,6 +547,18 @@ export default function PlanningPage() {
                   const endMin = evt.end_time ? timeToMinutes(evt.end_time) - 7 * 60 : startMin + 60;
                   return <div key={evt.id} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: `${(startMin / 60) * 64}px`, height: `${Math.max(((endMin - startMin) / 60) * 64, 20)}px`, ...baseStyle }}><div className="truncate">{evt.title}</div></div>;
                 })}
+                {filteredGoogleEvents.map((gEvt) => {
+                  const dayIdx = weekDays.findIndex((d) => fmt(d) === gEvt.start_date);
+                  if (dayIdx < 0) return null;
+                  const own = gEvt.profile_id === currentUserId;
+                  const baseStyle = { left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: own ? "#9E9E9E" : "#E0E0E0", color: own ? "#fff" : "#757575", ...(own ? {} : { backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px)" }) };
+                  if (gEvt.all_day || !gEvt.start_time) {
+                    return <div key={`g-${gEvt.google_event_id}`} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: "0px", height: "20px", ...baseStyle }}><div className="truncate">{gEvt.title}</div></div>;
+                  }
+                  const startMin = timeToMinutes(gEvt.start_time) - 7 * 60;
+                  const endMin = gEvt.end_time ? timeToMinutes(gEvt.end_time) - 7 * 60 : startMin + 60;
+                  return <div key={`g-${gEvt.google_event_id}`} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: `${(startMin / 60) * 64}px`, height: `${Math.max(((endMin - startMin) / 60) * 64, 20)}px`, ...baseStyle }}><div className="truncate">{gEvt.title}</div></div>;
+                })}
               </div>
             </div>
           </div>
@@ -470,6 +575,7 @@ export default function PlanningPage() {
               const isToday = dateStr === fmt(new Date());
               const dayIvs = filteredInterventions.filter((iv) => iv.scheduled_date === dateStr);
               const dayCals = filteredCalEvents.filter((e) => e.start_date === dateStr);
+              const dayGCals = filteredGoogleEvents.filter((e) => e.start_date === dateStr);
               return (
                 <div key={dateStr} className={`min-h-[100px] border-b border-r border-gray-50 p-1 cursor-pointer hover:bg-gray-50/50 transition-colors ${isToday ? "bg-[#6366f1]/5" : ""}`} onClick={() => handleSlotClick(dateStr, "09:00")}>
                   <div className={`text-xs font-medium mb-1 ${isToday ? "text-[#6366f1]" : "text-gray-500"}`}>{day.getDate()}</div>
@@ -480,6 +586,7 @@ export default function PlanningPage() {
                       </div>
                     ))}
                     {dayCals.slice(0, 2).map((e) => <div key={e.id} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: isOwnCal(e.profile_id) ? "#9E9E9E" : "#E0E0E0", color: isOwnCal(e.profile_id) ? "#fff" : "#757575" }}>{e.title}</div>)}
+                    {dayGCals.slice(0, 2).map((e) => <div key={`g-${e.google_event_id}`} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: e.profile_id === currentUserId ? "#9E9E9E" : "#E0E0E0", color: e.profile_id === currentUserId ? "#fff" : "#757575" }}>{e.title}</div>)}
                     {dayIvs.length > 3 && <div className="text-[10px] text-gray-400">+{dayIvs.length - 3} de plus</div>}
                   </div>
                 </div>
