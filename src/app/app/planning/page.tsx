@@ -154,7 +154,8 @@ function getColor(id: string, profiles: Profile[]): string {
 /* ------------------------------------------------------------------ */
 
 export default function PlanningPage() {
-  const { companies } = useAppContext();
+  const { companies, role } = useAppContext();
+  const isAdmin = role === "admin";
   const searchParams = useSearchParams();
   const prospectIdParam = searchParams.get("prospect_id");
 
@@ -200,7 +201,11 @@ export default function PlanningPage() {
         const res = await fetch("/api/profiles", { headers: { Authorization: `Bearer ${token}` } });
         const json = await res.json();
         console.log("[planning] Profiles response:", res.status, json);
-        const profs: Profile[] = json.profiles ?? [];
+        let profs: Profile[] = json.profiles ?? [];
+        // Tech users only see their own profile
+        if (role !== "admin" && userId) {
+          profs = profs.filter((p: Profile) => p.id === userId);
+        }
         setProfiles(profs);
         setVisibleProfiles(new Set(profs.map((p: Profile) => p.id)));
       } catch (err) {
@@ -270,7 +275,9 @@ export default function PlanningPage() {
 
   // Filtered data
   const filteredInterventions = interventions.filter((i) => visibleProfiles.has(i.assigned_to));
-  const filteredCalEvents = calendarEvents.filter((e) => visibleProfiles.has(e.profile_id));
+  const filteredCalEvents = isAdmin
+    ? calendarEvents.filter((e) => visibleProfiles.has(e.profile_id))
+    : calendarEvents; // Tech sees own + shared events (already filtered server-side)
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(currentDate, i));
 
   // Month grid
@@ -288,8 +295,9 @@ export default function PlanningPage() {
     });
   }
 
-  // Slot click: opens modal, passing pending prospect if any
+  // Slot click: opens modal, passing pending prospect if any (admin only)
   function handleSlotClick(date: string, time: string) {
+    if (!isAdmin) return;
     setPrefillDate(date);
     setPrefillTime(time);
     setShowNewModal(true);
@@ -307,13 +315,15 @@ export default function PlanningPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Planning</h1>
-        <button
-          onClick={() => { setPrefillDate(null); setPrefillTime(null); setShowNewModal(true); }}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#6366f1] hover:bg-[#818cf8] text-white text-sm font-medium rounded-lg transition-colors shrink-0"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-          Nouveau RDV
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => { setPrefillDate(null); setPrefillTime(null); setShowNewModal(true); }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#6366f1] hover:bg-[#818cf8] text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+            Nouveau RDV
+          </button>
+        )}
       </div>
 
       {/* Prospect banner */}
@@ -364,19 +374,21 @@ export default function PlanningPage() {
             <span className="text-sm font-semibold text-gray-900 ml-2">{title}</span>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              {profiles.map((p) => {
-                const color = getColor(p.id, profiles);
-                const checked = visibleProfiles.has(p.id);
-                return (
-                  <label key={p.id} className="flex items-center gap-1.5 cursor-pointer select-none">
-                    <input type="checkbox" checked={checked} onChange={() => toggleProfile(p.id)} className="sr-only" />
-                    <span className="w-3 h-3 rounded-full border-2 shrink-0" style={{ backgroundColor: checked ? color : "transparent", borderColor: color }} />
-                    <span className={`text-xs font-medium ${checked ? "text-gray-700" : "text-gray-400"}`}>{p.full_name}</span>
-                  </label>
-                );
-              })}
-            </div>
+            {isAdmin && (
+              <div className="flex items-center gap-3">
+                {profiles.map((p) => {
+                  const color = getColor(p.id, profiles);
+                  const checked = visibleProfiles.has(p.id);
+                  return (
+                    <label key={p.id} className="flex items-center gap-1.5 cursor-pointer select-none">
+                      <input type="checkbox" checked={checked} onChange={() => toggleProfile(p.id)} className="sr-only" />
+                      <span className="w-3 h-3 rounded-full border-2 shrink-0" style={{ backgroundColor: checked ? color : "transparent", borderColor: color }} />
+                      <span className={`text-xs font-medium ${checked ? "text-gray-700" : "text-gray-400"}`}>{p.full_name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex bg-gray-100 rounded-lg p-0.5">
               <button onClick={() => { setView("week"); setCurrentDate(getMonday(new Date())); }} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${view === "week" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>Semaine</button>
               <button onClick={() => { setView("month"); setCurrentDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); }} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${view === "month" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>Mois</button>
