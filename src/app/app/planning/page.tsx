@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase-client";
 import { useAppContext } from "../context";
 
@@ -169,8 +169,10 @@ function getColor(id: string, profiles: Profile[]): string {
 export default function PlanningPage() {
   const { companies, role } = useAppContext();
   const isAdmin = role === "admin";
+  const router = useRouter();
   const searchParams = useSearchParams();
   const prospectIdParam = searchParams.get("prospect_id");
+  const quoteIdParam = searchParams.get("quote_id");
 
   const [view, setView] = useState<"week" | "month">("week");
   const [currentDate, setCurrentDate] = useState(() => getMonday(new Date()));
@@ -194,6 +196,7 @@ export default function PlanningPage() {
 
   // Prospect banner mode
   const [pendingProspect, setPendingProspect] = useState<SearchClient | null>(null);
+  const [pendingQuoteId, setPendingQuoteId] = useState<string | null>(quoteIdParam);
   const [loadingProspect, setLoadingProspect] = useState(false);
 
   // Ranges
@@ -254,6 +257,21 @@ export default function PlanningPage() {
             });
           }
         } catch { /* empty */ }
+
+        // Auto-resolve quote_id if not provided in URL
+        if (!quoteIdParam && prospectIdParam) {
+          try {
+            const qRes = await fetch(`/api/quotes?client_id=${prospectIdParam}&status=sent,accepted&limit=1`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const qJson = await qRes.json();
+            const quotes = qJson.quotes ?? [];
+            if (quotes.length > 0) {
+              setPendingQuoteId(quotes[0].id);
+            }
+          } catch { /* empty */ }
+        }
+
         setLoadingProspect(false);
       }
     })();
@@ -529,7 +547,7 @@ export default function PlanningPage() {
                   const color = getColor(iv.assigned_to, profiles);
                   const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
                   return (
-                    <div key={iv.id} className="absolute rounded-md px-1.5 py-1 text-white text-xs overflow-hidden cursor-pointer hover:shadow-lg transition-shadow z-10" style={{ top: `${topPx}px`, height: `${Math.max(heightPx, 24)}px`, left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: color, opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); setSelectedIntervention(iv); }}>
+                    <div key={iv.id} className="absolute rounded-md px-1.5 py-1 text-white text-xs overflow-hidden cursor-pointer hover:shadow-lg transition-shadow z-10" style={{ top: `${topPx}px`, height: `${Math.max(heightPx, 24)}px`, left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: color, opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
                       <div className="font-medium truncate">{iv.scheduled_time.slice(0, 5)} {clientName}</div>
                       {heightPx > 32 && iv.client?.city && <div className="truncate opacity-80">{iv.client.city}</div>}
                     </div>
@@ -581,7 +599,7 @@ export default function PlanningPage() {
                   <div className={`text-xs font-medium mb-1 ${isToday ? "text-[#6366f1]" : "text-gray-500"}`}>{day.getDate()}</div>
                   <div className="space-y-0.5">
                     {dayIvs.slice(0, 3).map((iv) => (
-                      <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm" style={{ backgroundColor: getColor(iv.assigned_to, profiles), opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); setSelectedIntervention(iv); }}>
+                      <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm" style={{ backgroundColor: getColor(iv.assigned_to, profiles), opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
                         {iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}
                       </div>
                     ))}
@@ -604,9 +622,10 @@ export default function PlanningPage() {
           prefillDate={prefillDate}
           prefillTime={prefillTime}
           prefillClient={pendingProspect}
+          prefillQuoteId={pendingQuoteId}
           currentUserId={currentUserId}
           onClose={() => setShowNewModal(false)}
-          onCreated={() => { setShowNewModal(false); setPendingProspect(null); fetchEvents(); }}
+          onCreated={() => { setShowNewModal(false); setPendingProspect(null); setPendingQuoteId(null); fetchEvents(); }}
         />
       )}
 
@@ -634,6 +653,7 @@ function NewRdvModal({
   prefillDate,
   prefillTime,
   prefillClient,
+  prefillQuoteId,
   currentUserId,
   onClose,
   onCreated,
@@ -643,6 +663,7 @@ function NewRdvModal({
   prefillDate: string | null;
   prefillTime: string | null;
   prefillClient: SearchClient | null;
+  prefillQuoteId: string | null;
   currentUserId: string | null;
   onClose: () => void;
   onCreated: () => void;
@@ -712,6 +733,7 @@ function NewRdvModal({
         body: JSON.stringify({
           client_id: selectedClient.id,
           company_id: selectedClient.company_id,
+          quote_id: prefillQuoteId || null,
           assigned_to: assignedTo,
           scheduled_date: date,
           scheduled_time: time,

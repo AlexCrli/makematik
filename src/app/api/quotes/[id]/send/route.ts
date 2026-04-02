@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { shouldAdvanceStatus } from "@/lib/client-status";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -70,12 +71,22 @@ export async function POST(
       return NextResponse.json({ error: updateError.message }, { status: 400 });
     }
 
-    // Update prospect status to quote_sent
-    await supabase
+    // Update prospect status to quote_sent (only if not already further in pipeline)
+    const { data: currentClient } = await supabase
       .from("clients")
-      .update({ status: "quote_sent" })
+      .select("status")
       .eq("id", quote.client_id)
-      .eq("organization_id", organizationId);
+      .single();
+
+    if (currentClient) {
+      if (shouldAdvanceStatus(currentClient.status, "quote_sent")) {
+        await supabase
+          .from("clients")
+          .update({ status: "quote_sent" })
+          .eq("id", quote.client_id)
+          .eq("organization_id", organizationId);
+      }
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

@@ -20,7 +20,16 @@
       "Bash(grep -r \"created_by\\\\|created_at\" /c/Users/alexc/Desktop/makematik/src --include=*.ts --include=*.tsx -n)",
       "Bash(wc:*)",
       "Bash(head:*)",
-      "Bash(tail:*)"
+      "Bash(tail:*)",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/quotes/[id]/lines\")",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/quotes/[id]/lines/[lineId]\")",
+      "Bash(grep:*)",
+      "Bash(ls -la /c/Users/alexc/Desktop/makematik/src/app/app/devis/*/rdv/)",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/invoices/[id]\")",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/app/factures/[id]\")",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/quotes/[id]/pdf\")",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/quotes/[id]/send-email\")",
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/invoices/[id]/pdf\")"
     ]
   }
 }

@@ -71,6 +71,16 @@ export async function GET(request: Request) {
       query = query.eq("client_id", clientId);
     }
 
+    const status = searchParams.get("status");
+    if (status) {
+      query = query.in("status", status.split(","));
+    }
+
+    const limit = searchParams.get("limit");
+    if (limit) {
+      query = query.limit(parseInt(limit));
+    }
+
     const { data, error } = await query;
 
     if (error) {
@@ -209,6 +219,27 @@ export async function POST(request: Request) {
       await supabase.from("quotes").delete().eq("id", quote.id);
       return NextResponse.json({ error: linesError.message }, { status: 400 });
     }
+
+    // Link to existing planned intervention without a quote
+    try {
+      const { data: existingIv } = await supabase
+        .from("interventions")
+        .select("id")
+        .eq("client_id", client_id)
+        .eq("organization_id", organizationId)
+        .is("quote_id", null)
+        .eq("status", "planned")
+        .order("scheduled_date", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existingIv) {
+        await supabase
+          .from("interventions")
+          .update({ quote_id: quote.id })
+          .eq("id", existingIv.id);
+      }
+    } catch { /* no matching intervention — that's fine */ }
 
     return NextResponse.json({ success: true, quote });
   } catch (err) {

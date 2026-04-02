@@ -57,6 +57,23 @@ interface QuoteListItem {
   company_name: string;
 }
 
+interface InterventionListItem {
+  id: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  status: string;
+  assignee_name: string | null;
+  invoice_id: string | null;
+  invoice: { invoice_number: string; total_ttc: number; status: string } | null;
+}
+
+const IV_STATUS: Record<string, { label: string; color: string }> = {
+  planned: { label: "Planifié", color: "bg-blue-100 text-blue-700" },
+  in_progress: { label: "En cours", color: "bg-orange-100 text-orange-700" },
+  completed: { label: "Terminé", color: "bg-green-100 text-green-700" },
+  cancelled: { label: "Annulé", color: "bg-red-100 text-red-700" },
+};
+
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -363,6 +380,7 @@ export default function ProspectDetailPage() {
   const [client, setClient] = useState<ClientDetail | null>(null);
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const [quotes, setQuotes] = useState<QuoteListItem[]>([]);
+  const [clientInterventions, setClientInterventions] = useState<InterventionListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEdit, setShowEdit] = useState(false);
   const [showFollowUp, setShowFollowUp] = useState(false);
@@ -415,11 +433,26 @@ export default function ProspectDetailPage() {
     }
   }, [id]);
 
+  const fetchInterventions = useCallback(async () => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/interventions?client_id=${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      setClientInterventions(json.interventions ?? []);
+    } catch {
+      setClientInterventions([]);
+    }
+  }, [id]);
+
   useEffect(() => {
     fetchClient();
     fetchFollowUps();
     fetchQuotes();
-  }, [fetchClient, fetchFollowUps, fetchQuotes]);
+    fetchInterventions();
+  }, [fetchClient, fetchFollowUps, fetchQuotes, fetchInterventions]);
 
   async function handleStatusChange(newStatus: string) {
     if (!client) return;
@@ -580,7 +613,11 @@ export default function ProspectDetailPage() {
 
             {/* Prendre RDV */}
             <button
-              onClick={() => router.push(`/app/planning?prospect_id=${client.id}`)}
+              onClick={() => {
+                const latestQuote = quotes.find((q) => q.status === "sent" || q.status === "accepted");
+                const qParam = latestQuote ? `&quote_id=${latestQuote.id}` : "";
+                router.push(`/app/planning?prospect_id=${client.id}${qParam}`);
+              }}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -725,6 +762,53 @@ export default function ProspectDetailPage() {
                     </span>
                   </div>
                 </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ---- INTERVENTIONS ---- */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mt-6">
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
+          Interventions
+          <span className="ml-1.5 text-gray-400">({clientInterventions.length})</span>
+        </h2>
+
+        {clientInterventions.length === 0 ? (
+          <div className="text-center py-8">
+            <svg className="w-10 h-10 text-gray-200 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63" />
+            </svg>
+            <p className="text-gray-400 text-sm">Aucune intervention pour ce prospect</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {clientInterventions.map((iv) => {
+              const st = IV_STATUS[iv.status] ?? IV_STATUS.planned;
+              const [y, m, d] = iv.scheduled_date.split("-").map(Number);
+              const dateObj = new Date(y, m - 1, d);
+              const dateFr = dateObj.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+              const h = parseInt(iv.scheduled_time.slice(0, 2));
+              const min = iv.scheduled_time.slice(3, 5);
+              const timeFr = `${h}h${min === "00" ? "" : min}`;
+              return (
+                <div key={iv.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50/80 border border-gray-100 hover:border-[#6366f1]/30 transition-all">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Link href={`/app/interventions/${iv.id}`} className="text-sm font-medium text-gray-900 hover:text-[#6366f1]">
+                      {dateFr} à {timeFr}
+                    </Link>
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
+                    {iv.assignee_name && <span className="text-xs text-gray-500">{iv.assignee_name}</span>}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0">
+                    {iv.invoice && (
+                      <Link href={`/app/factures/${iv.invoice_id}`} className="text-sm font-medium text-[#6366f1] hover:underline">
+                        {new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" }).format(iv.invoice.total_ttc)}
+                      </Link>
+                    )}
+                  </div>
+                </div>
               );
             })}
           </div>

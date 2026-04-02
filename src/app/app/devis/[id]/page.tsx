@@ -308,7 +308,7 @@ export default function DevisDetailPage() {
       <div className="text-center py-32">
         <p className="text-gray-400 text-sm">Devis introuvable</p>
         <button
-          onClick={() => router.push("/app/devis")}
+          onClick={() => router.back()}
           className="mt-4 text-sm text-[#6366f1] hover:text-[#818cf8] font-medium"
         >
           Retour aux devis
@@ -328,7 +328,7 @@ export default function DevisDetailPage() {
     <div>
       {/* Back link */}
       <button
-        onClick={() => router.push("/app/devis")}
+        onClick={() => router.back()}
         className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-5 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -380,7 +380,7 @@ export default function DevisDetailPage() {
                 {quote.status === "sent" && (
                   <>
                     <button
-                      onClick={() => router.push(`/app/planning?prospect_id=${quote.client_id}`)}
+                      onClick={() => router.push(`/app/planning?prospect_id=${quote.client_id}&quote_id=${quote.id}`)}
                       className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -398,6 +398,57 @@ export default function DevisDetailPage() {
                   </>
                 )}
               </>
+            )}
+
+            {/* PDF + Email buttons (always visible) */}
+            <button
+              onClick={async () => {
+                const session = supabaseBrowser ? (await supabaseBrowser.auth.getSession()).data.session : null;
+                if (!session) return;
+                const res = await fetch(`/api/quotes/${quote.id}/pdf`, {
+                  headers: { Authorization: `Bearer ${session.access_token}` },
+                });
+                if (!res.ok) return;
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `${quote.quote_number}.pdf`; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              PDF
+            </button>
+            {!isDraft && quote.status !== "refused" && (
+              <button
+                onClick={async () => {
+                  const session = supabaseBrowser ? (await supabaseBrowser.auth.getSession()).data.session : null;
+                  if (!session) return;
+                  setActionLoading(true);
+                  try {
+                    const res = await fetch(`/api/quotes/${quote.id}/send-email`, {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${session.access_token}` },
+                    });
+                    const json = await res.json();
+                    if (res.ok) {
+                      fetchQuote();
+                      if (!json.email_sent) alert("Devis marqué comme envoyé mais l'email n'a pas pu être envoyé.");
+                    }
+                  } catch { alert("Erreur lors de l'envoi"); }
+                  setActionLoading(false);
+                }}
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-[#6366f1] hover:bg-[#818cf8] rounded-lg transition-colors disabled:opacity-40"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                </svg>
+                Envoyer par email
+              </button>
             )}
           </div>
         </div>

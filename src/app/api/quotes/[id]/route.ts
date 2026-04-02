@@ -63,7 +63,7 @@ export async function GET(
       .from("quote_lines")
       .select("*")
       .eq("quote_id", quote.id)
-      .order("id");
+      .order("created_at", { ascending: true });
 
     // Fetch client info
     const { data: client } = await supabase

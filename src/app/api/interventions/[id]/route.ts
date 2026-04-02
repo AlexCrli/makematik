@@ -34,6 +34,94 @@ async function authenticate(request: Request) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  GET — single intervention with full details                        */
+/* ------------------------------------------------------------------ */
+
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const auth = await authenticate(request);
+    if ("error" in auth) return auth.error;
+
+    const { supabase, organizationId } = auth;
+
+    const { data, error } = await supabase
+      .from("interventions")
+      .select("*")
+      .eq("id", params.id)
+      .eq("organization_id", organizationId)
+      .single();
+
+    if (error || !data) {
+      return NextResponse.json({ error: "Intervention not found" }, { status: 404 });
+    }
+
+    // Client info
+    let client = null;
+    if (data.client_id) {
+      const { data: c, error: clientError } = await supabase
+        .from("clients")
+        .select("*")
+        .eq("id", data.client_id)
+        .single();
+
+      if (clientError) {
+        console.error("[api/interventions/[id] GET] Client fetch error:", clientError.message);
+      }
+
+      if (c) {
+        let company_name: string | null = null;
+        if (c.company_id) {
+          const { data: co } = await supabase
+            .from("companies")
+            .select("name")
+            .eq("id", c.company_id)
+            .single();
+          if (co) company_name = co.name;
+        }
+        client = { ...c, company_name };
+      }
+    }
+
+    // Assignee name
+    let assignee_name: string | null = null;
+    if (data.assigned_to) {
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", data.assigned_to)
+        .single();
+      if (p) assignee_name = p.full_name;
+    }
+
+    // Quote info
+    let quote = null;
+    if (data.quote_id) {
+      const { data: q } = await supabase
+        .from("quotes")
+        .select("id, quote_number, total_ht, tva_rate, total_ttc, tax_credit_amount")
+        .eq("id", data.quote_id)
+        .single();
+      if (q) quote = q;
+    }
+
+    return NextResponse.json({
+      intervention: {
+        ...data,
+        client,
+        assignee_name,
+        quote,
+      },
+    });
+  } catch (err) {
+    console.error("[api/interventions/[id] GET] Unexpected:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /*  PUT — update an intervention                                       */
 /* ------------------------------------------------------------------ */
 
@@ -63,6 +151,7 @@ export async function PUT(
     const allowed = [
       "assigned_to", "scheduled_date", "scheduled_time",
       "duration_minutes", "status", "field_notes",
+      "payment_method", "payment_amount", "completed_at",
     ];
     for (const key of allowed) {
       if (key in body) updates[key] = body[key];

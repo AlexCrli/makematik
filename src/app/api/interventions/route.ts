@@ -48,6 +48,8 @@ export async function GET(request: Request) {
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
     const assignedTo = searchParams.get("assigned_to");
+    const clientId = searchParams.get("client_id");
+    const status = searchParams.get("status"); // comma-separated: "planned,in_progress"
 
     let query = supabase
       .from("interventions")
@@ -59,6 +61,8 @@ export async function GET(request: Request) {
     if (startDate) query = query.gte("scheduled_date", startDate);
     if (endDate) query = query.lte("scheduled_date", endDate);
     if (assignedTo) query = query.eq("assigned_to", assignedTo);
+    if (clientId) query = query.eq("client_id", clientId);
+    if (status) query = query.in("status", status.split(","));
 
     const { data, error } = await query;
 
@@ -93,10 +97,24 @@ export async function GET(request: Request) {
       }
     }
 
+    // Join invoice info
+    const invoiceIds = [...new Set((data ?? []).map((i) => i.invoice_id).filter(Boolean))];
+    let invoicesMap: Record<string, { invoice_number: string; total_ttc: number; status: string }> = {};
+    if (invoiceIds.length > 0) {
+      const { data: invs } = await supabase
+        .from("invoices")
+        .select("id, invoice_number, total_ttc, status")
+        .in("id", invoiceIds);
+      if (invs) {
+        invoicesMap = Object.fromEntries(invs.map((inv) => [inv.id, inv]));
+      }
+    }
+
     const interventions = (data ?? []).map((i) => ({
       ...i,
       client: clientsMap[i.client_id] ?? null,
       assignee_name: assigneesMap[i.assigned_to] ?? null,
+      invoice: i.invoice_id ? invoicesMap[i.invoice_id] ?? null : null,
     }));
 
     return NextResponse.json({ interventions });

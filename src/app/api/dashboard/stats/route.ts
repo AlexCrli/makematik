@@ -65,10 +65,28 @@ export async function GET(request: Request) {
       .eq("organization_id", organizationId)
       .eq("status", "rdv_confirmed");
 
+    // Factures pending
+    const { data: pendingInvoices } = await supabase
+      .from("invoices")
+      .select("id, total_ttc, payment_due_date")
+      .eq("organization_id", organizationId)
+      .eq("status", "pending");
+
+    const pending = pendingInvoices ?? [];
+    const facturesPending = pending.length;
+    const facturesPendingAmount = pending.reduce((s, i) => s + (i.total_ttc ?? 0), 0);
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const facturesOverdue = pending.filter((i) => i.payment_due_date && i.payment_due_date < todayStr).length;
+
     return NextResponse.json({
       prospects_this_month: prospectsThisMonth ?? 0,
       devis_en_attente: devisEnAttente ?? 0,
       rdv_confirmes: rdvConfirmes ?? 0,
+      factures_pending: facturesPending,
+      factures_pending_amount: facturesPendingAmount,
+      factures_overdue: facturesOverdue,
     });
   } catch (err) {
     console.error("[api/dashboard/stats] Unexpected:", err);
