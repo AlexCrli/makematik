@@ -7,6 +7,13 @@ const clientId = process.env.GOOGLE_CLIENT_ID ?? "";
 const clientSecret = process.env.GOOGLE_CLIENT_SECRET ?? "";
 const redirectUri = process.env.GOOGLE_REDIRECT_URI ?? "";
 
+// Base URL déduite de GOOGLE_REDIRECT_URI (ex: https://makematik.com)
+const baseUrl = redirectUri ? new URL(redirectUri).origin : "https://makematik.com";
+
+function appRedirect(path: string) {
+  return NextResponse.redirect(`${baseUrl}${path}`);
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
@@ -15,11 +22,11 @@ export async function GET(request: Request) {
 
   // Utilisateur a refusé l'autorisation
   if (error) {
-    return NextResponse.redirect(new URL("/app/planning?google_error=denied", request.url));
+    return appRedirect("/app/planning?google_error=denied");
   }
 
   if (!code || !profileId) {
-    return NextResponse.redirect(new URL("/app/planning?google_error=missing_params", request.url));
+    return appRedirect("/app/planning?google_error=missing_params");
   }
 
   try {
@@ -40,7 +47,7 @@ export async function GET(request: Request) {
 
     if (!tokenRes.ok || !tokenData.access_token) {
       console.error("[google/callback] Token exchange error:", tokenData);
-      return NextResponse.redirect(new URL("/app/planning?google_error=token_exchange", request.url));
+      return appRedirect("/app/planning?google_error=token_exchange");
     }
 
     const { access_token, refresh_token, expires_in } = tokenData;
@@ -70,12 +77,12 @@ export async function GET(request: Request) {
 
     if (updateError) {
       console.error("[google/callback] Profile update error:", updateError.message);
-      return NextResponse.redirect(new URL("/app/planning?google_error=save_failed", request.url));
+      return appRedirect("/app/planning?google_error=save_failed");
     }
 
-    return NextResponse.redirect(new URL("/app/planning?google_connected=true", request.url));
+    return appRedirect("/app/planning?google_connected=true");
   } catch (err) {
     console.error("[google/callback] Unexpected:", err);
-    return NextResponse.redirect(new URL("/app/planning?google_error=unexpected", request.url));
+    return appRedirect("/app/planning?google_error=unexpected");
   }
 }
