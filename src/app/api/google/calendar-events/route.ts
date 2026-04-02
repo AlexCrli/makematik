@@ -76,7 +76,13 @@ export async function GET(request: Request) {
     const gcalData = await gcalRes.json();
 
     const events = (gcalData.items ?? [])
-      .filter((item: Record<string, unknown>) => item.status !== "cancelled")
+      .filter((item: Record<string, unknown>) => {
+        if (item.status === "cancelled") return false;
+        // Exclure les événements créés par l'app (évite les doublons avec les interventions)
+        const ext = item.extendedProperties as Record<string, Record<string, string>> | undefined;
+        if (ext?.private?.source === "makematik") return false;
+        return true;
+      })
       .map((item: Record<string, unknown>) => {
         const start = item.start as Record<string, string> | undefined;
         const end = item.end as Record<string, string> | undefined;
@@ -91,13 +97,15 @@ export async function GET(request: Request) {
           startDateStr = start!.date;
           endDateStr = end?.date ?? null;
         } else {
-          const s = new Date(start!.dateTime);
-          const e = end?.dateTime ? new Date(end.dateTime) : null;
-          startDateStr = s.toISOString().slice(0, 10);
-          startTime = s.toTimeString().slice(0, 5);
-          if (e) {
-            endDateStr = e.toISOString().slice(0, 10);
-            endTime = e.toTimeString().slice(0, 5);
+          // Parser la string ISO directement pour garder l'heure locale
+          // Ex: "2026-04-10T14:00:00+02:00" → date="2026-04-10", time="14:00"
+          const sRaw = start!.dateTime;
+          startDateStr = sRaw.slice(0, 10);
+          startTime = sRaw.slice(11, 16);
+          if (end?.dateTime) {
+            const eRaw = end.dateTime;
+            endDateStr = eRaw.slice(0, 10);
+            endTime = eRaw.slice(11, 16);
           }
         }
 

@@ -245,6 +245,7 @@ export async function POST(request: Request) {
               location,
               start: { dateTime: startDatetime, timeZone: "Europe/Paris" },
               end: { dateTime: endDatetime, timeZone: "Europe/Paris" },
+              extendedProperties: { private: { source: "makematik" } },
             }),
           },
         );

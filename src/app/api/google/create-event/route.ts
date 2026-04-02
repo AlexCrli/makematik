@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       location: location ?? "",
       start: { dateTime: start_datetime, timeZone: "Europe/Paris" },
       end: { dateTime: end_datetime, timeZone: "Europe/Paris" },
+      extendedProperties: { private: { source: "makematik" } },
     };
 
     const gcalRes = await fetch(
