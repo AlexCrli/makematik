@@ -61,3 +61,54 @@ export async function GET(request: Request) {
     return NextResponse.json({ companies: [] });
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  POST — create a new company                                        */
+/* ------------------------------------------------------------------ */
+
+export async function POST(request: Request) {
+  try {
+    const auth = await authenticate(request);
+    if ("error" in auth) return auth.error;
+
+    const { supabase, organizationId } = auth;
+
+    // Check admin
+    const { data: prof } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", auth.user.id)
+      .single();
+    if (prof?.role !== "admin") {
+      return NextResponse.json({ error: "Admin only" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    if (!body.name) {
+      return NextResponse.json({ error: "Le nom est requis" }, { status: 400 });
+    }
+
+    const row = {
+      organization_id: organizationId,
+      name: body.name,
+      code: body.code || null,
+      color: body.color || null,
+    };
+
+    const { data, error } = await supabase
+      .from("companies")
+      .insert([row])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("[api/companies POST] Error:", error.message);
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true, company: data });
+  } catch (err) {
+    console.error("[api/companies POST] Unexpected:", err);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+  }
+}

@@ -91,6 +91,8 @@ export default function FactureDetailPage() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Mark as paid form
   const [showPayForm, setShowPayForm] = useState(false);
@@ -291,6 +293,45 @@ export default function FactureDetailPage() {
             </svg>
             Télécharger le PDF
           </button>
+
+          {/* Send email */}
+          <button
+            disabled={sendingEmail}
+            onClick={async () => {
+              setSendingEmail(true);
+              setEmailMsg(null);
+              const token = await getToken();
+              if (!token) { setSendingEmail(false); return; }
+              try {
+                const res = await fetch(`/api/invoices/${id}/send-email`, {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const json = await res.json();
+                if (res.ok && json.success) {
+                  setEmailMsg({ type: "success", text: "Facture envoy\u00E9e par email" });
+                } else {
+                  setEmailMsg({ type: "error", text: json.error || "Erreur lors de l'envoi" });
+                }
+              } catch {
+                setEmailMsg({ type: "error", text: "Erreur r\u00E9seau" });
+              }
+              setSendingEmail(false);
+              setTimeout(() => setEmailMsg(null), 4000);
+            }}
+            className="w-full py-3 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-xl border border-gray-200 transition-colors inline-flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+            </svg>
+            {sendingEmail ? "Envoi en cours..." : "Envoyer par email"}
+          </button>
+
+          {emailMsg && (
+            <div className={`px-3 py-2 rounded-lg text-sm ${emailMsg.type === "success" ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+              {emailMsg.text}
+            </div>
+          )}
         </div>
 
         {/* Right column — info sidebar */}

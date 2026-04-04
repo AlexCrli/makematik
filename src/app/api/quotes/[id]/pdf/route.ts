@@ -45,18 +45,22 @@ export async function GET(
       .from("clients").select("first_name, last_name, email, phone, address, postal_code, city").eq("id", quote.client_id).single();
 
     const { data: company } = await supabase
-      .from("companies").select("name").eq("id", quote.company_id).single();
+      .from("companies")
+      .select("name, address, postal_code, city, phone, email, siret, iban, bank_account_name, legal_entity_name, legal_mentions, tva_mention, logo_url, color")
+      .eq("id", quote.company_id)
+      .single();
 
     const pdfBuffer = generateQuotePdf({
       quote_number: quote.quote_number,
       created_at: quote.created_at,
       sent_at: quote.sent_at,
       total_ht: quote.total_ht,
-      tva_rate: quote.tva_rate ?? 20,
+      tva_rate: quote.tva_rate ?? 0,
       total_ttc: quote.total_ttc,
       tax_credit_amount: quote.tax_credit_amount ?? 0,
+      estimated_duration: quote.estimated_duration ?? null,
       client: client ?? { first_name: "", last_name: "", email: null, phone: null, address: null, postal_code: null, city: null },
-      company,
+      company: company ?? { name: "Makematik" },
       lines: (lines ?? []).map((l) => ({ label: l.label, quantity: l.quantity, unit_price_ht: l.unit_price_ht, total_ht: l.total_ht })),
     });
 

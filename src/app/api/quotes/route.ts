@@ -147,10 +147,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "company_id, client_id and lines are required" }, { status: 400 });
     }
 
-    // Get company name for quote number generation
+    // Get company info for quote number generation
     const { data: company } = await supabase
       .from("companies")
-      .select("name")
+      .select("name, code")
       .eq("id", company_id)
       .single();
 
@@ -159,7 +159,7 @@ export async function POST(request: Request) {
     }
 
     // Generate quote number: DEV-{CODE}-{YEAR}-{NUM}
-    const companyCode = COMPANY_CODES[company.name] ?? "XX";
+    const companyCode = company.code ?? COMPANY_CODES[company.name] ?? "XX";
     const year = new Date().getFullYear();
     const { count } = await supabase
       .from("quotes")

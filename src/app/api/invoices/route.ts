@@ -129,11 +129,11 @@ export async function POST(request: Request) {
     // Generate invoice number
     const { data: company } = await supabase
       .from("companies")
-      .select("name")
+      .select("name, code")
       .eq("id", company_id)
       .single();
 
-    const companyCode = COMPANY_CODES[company?.name ?? ""] ?? "XX";
+    const companyCode = company?.code ?? COMPANY_CODES[company?.name ?? ""] ?? "XX";
     const now = new Date();
     const year = now.getFullYear();
 

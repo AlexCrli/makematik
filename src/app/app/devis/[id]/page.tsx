@@ -436,9 +436,11 @@ export default function DevisDetailPage() {
                     const json = await res.json();
                     if (res.ok) {
                       fetchQuote();
-                      if (!json.email_sent) alert("Devis marqué comme envoyé mais l'email n'a pas pu être envoyé.");
+                      if (!json.email_sent) alert("Devis marqu\u00E9 comme envoy\u00E9 mais l'email n'a pas pu \u00EAtre envoy\u00E9.");
+                    } else {
+                      alert(json.error || "Erreur lors de l'envoi");
                     }
-                  } catch { alert("Erreur lors de l'envoi"); }
+                  } catch { alert("Erreur r\u00E9seau"); }
                   setActionLoading(false);
                 }}
                 disabled={actionLoading}

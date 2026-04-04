@@ -44,7 +44,18 @@ export async function GET(
       .from("clients").select("first_name, last_name, email, phone, address, postal_code, city").eq("id", invoice.client_id).single();
 
     const { data: company } = await supabase
-      .from("companies").select("name").eq("id", invoice.company_id).single();
+      .from("companies")
+      .select("name, address, postal_code, city, phone, email, siret, iban, bank_account_name, legal_entity_name, legal_mentions, tva_mention, logo_url, color")
+      .eq("id", invoice.company_id)
+      .single();
+
+    // Fetch quote number if linked
+    let quoteNumber: string | null = null;
+    if (invoice.quote_id) {
+      const { data: quote } = await supabase
+        .from("quotes").select("quote_number").eq("id", invoice.quote_id).single();
+      if (quote) quoteNumber = quote.quote_number;
+    }
 
     const pdfBuffer = generateInvoicePdf({
       invoice_number: invoice.invoice_number,
@@ -54,14 +65,16 @@ export async function GET(
       payment_date: invoice.payment_date,
       payment_due_date: invoice.payment_due_date,
       late_fee_percentage: invoice.late_fee_percentage ?? 20,
+      late_fee_applied: invoice.late_fee_applied ?? false,
       total_ht: invoice.total_ht,
-      tva_rate: invoice.tva_rate ?? 20,
+      tva_rate: invoice.tva_rate ?? 0,
       total_tva: invoice.total_tva,
       total_ttc: invoice.total_ttc,
       tax_credit_applicable: invoice.tax_credit_applicable ?? false,
       tax_credit_amount: invoice.tax_credit_amount ?? 0,
+      quote_number: quoteNumber,
       client: client ?? { first_name: "", last_name: "", email: null, phone: null, address: null, postal_code: null, city: null },
-      company,
+      company: company ?? { name: "Makematik" },
       lines: (lines ?? []).map((l) => ({ label: l.label, quantity: l.quantity, unit_price: l.unit_price, total_ht: l.total_ht })),
     });
 
