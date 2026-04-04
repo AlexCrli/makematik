@@ -85,7 +85,7 @@ export async function GET(
       }
     }
 
-    // Assignee name
+    // Assignee name (legacy)
     let assignee_name: string | null = null;
     if (data.assigned_to) {
       const { data: p } = await supabase
@@ -94,6 +94,26 @@ export async function GET(
         .eq("id", data.assigned_to)
         .single();
       if (p) assignee_name = p.full_name;
+    }
+
+    // Assignees from junction table
+    let assignees: { profile_id: string; full_name: string; color: string | null }[] = [];
+    {
+      const { data: assigneeRows } = await supabase
+        .from("intervention_assignees")
+        .select("profile_id")
+        .eq("intervention_id", data.id);
+
+      if (assigneeRows && assigneeRows.length > 0) {
+        const profileIds = assigneeRows.map((a) => a.profile_id);
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, color")
+          .in("id", profileIds);
+        if (profiles) {
+          assignees = profiles.map((p) => ({ profile_id: p.id, full_name: p.full_name, color: p.color }));
+        }
+      }
     }
 
     // Quote info
@@ -112,6 +132,7 @@ export async function GET(
         ...data,
         client,
         assignee_name,
+        assignees,
         quote,
       },
     });

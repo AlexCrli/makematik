@@ -13,6 +13,12 @@ interface ClientInfo {
   company_id: string | null;
 }
 
+interface Assignee {
+  profile_id: string;
+  full_name: string;
+  color: string | null;
+}
+
 interface InterventionItem {
   id: string;
   scheduled_date: string;
@@ -22,6 +28,7 @@ interface InterventionItem {
   assigned_to: string;
   client: ClientInfo | null;
   assignee_name: string | null;
+  assignees: Assignee[];
 }
 
 const DAYS_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
@@ -59,6 +66,7 @@ export default function InterventionsListPage() {
       const headers = { Authorization: `Bearer ${session.access_token}` };
       const userId = session.user.id;
 
+      // Tech: filter by assigned_to which now queries intervention_assignees on the server
       let url = "/api/interventions?status=planned,in_progress";
       if (role === "tech") {
         url += `&assigned_to=${userId}`;
@@ -97,6 +105,9 @@ export default function InterventionsListPage() {
           {interventions.map((iv) => {
             const status = STATUS_MAP[iv.status] ?? STATUS_MAP.planned;
             const companyName = getCompanyName(iv.client?.company_id);
+            const assigneeNames = iv.assignees?.length > 0
+              ? iv.assignees.map((a) => a.full_name).join(", ")
+              : iv.assignee_name ?? "";
             return (
               <button
                 key={iv.id}
@@ -132,10 +143,15 @@ export default function InterventionsListPage() {
                   {iv.client?.nb_splits != null && (
                     <span>{iv.client.nb_splits} splits</span>
                   )}
-                  {iv.assignee_name && (
+                  {assigneeNames && (
                     <>
                       <span className="text-gray-400">·</span>
-                      <span>{iv.assignee_name}</span>
+                      <span className="flex items-center gap-1">
+                        {iv.assignees?.length > 0 && iv.assignees.map((a, idx) => (
+                          <span key={idx} className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: a.color ?? "#9ca3af" }} />
+                        ))}
+                        {assigneeNames}
+                      </span>
                     </>
                   )}
                 </div>

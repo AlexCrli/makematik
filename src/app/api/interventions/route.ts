@@ -35,7 +35,7 @@ async function authenticate(request: Request) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  GET — list interventions with client info                          */
+/*  GET — list interventions with client info + assignees              */
 /* ------------------------------------------------------------------ */
 
 export async function GET(request: Request) {
@@ -51,6 +51,19 @@ export async function GET(request: Request) {
     const clientId = searchParams.get("client_id");
     const status = searchParams.get("status"); // comma-separated: "planned,in_progress"
 
+    // If filtering by assignee, find matching intervention IDs from junction table
+    let assigneeInterventionIds: string[] | null = null;
+    if (assignedTo) {
+      const { data: assigneeRows } = await supabase
+        .from("intervention_assignees")
+        .select("intervention_id")
+        .eq("profile_id", assignedTo);
+      assigneeInterventionIds = (assigneeRows ?? []).map((r) => r.intervention_id);
+      if (assigneeInterventionIds.length === 0) {
+        return NextResponse.json({ interventions: [] });
+      }
+    }
+
     let query = supabase
       .from("interventions")
       .select("*")
@@ -60,7 +73,7 @@ export async function GET(request: Request) {
 
     if (startDate) query = query.gte("scheduled_date", startDate);
     if (endDate) query = query.lte("scheduled_date", endDate);
-    if (assignedTo) query = query.eq("assigned_to", assignedTo);
+    if (assigneeInterventionIds) query = query.in("id", assigneeInterventionIds);
     if (clientId) query = query.eq("client_id", clientId);
     if (status) query = query.in("status", status.split(","));
 
@@ -69,6 +82,41 @@ export async function GET(request: Request) {
     if (error) {
       console.error("[api/interventions GET] Error:", error.message);
       return NextResponse.json({ interventions: [] });
+    }
+
+    const interventionIds = (data ?? []).map((i) => i.id);
+
+    // Join intervention_assignees + profiles
+    let assigneesMap: Record<string, { profile_id: string; full_name: string; color: string | null }[]> = {};
+    if (interventionIds.length > 0) {
+      const { data: assigneeRows } = await supabase
+        .from("intervention_assignees")
+        .select("intervention_id, profile_id")
+        .in("intervention_id", interventionIds);
+
+      if (assigneeRows && assigneeRows.length > 0) {
+        const profileIds = [...new Set(assigneeRows.map((a) => a.profile_id))];
+        const { data: profiles } = await supabase
+          .from("profiles")
+          .select("id, full_name, color")
+          .in("id", profileIds);
+        const profilesMap: Record<string, { full_name: string; color: string | null }> = {};
+        if (profiles) {
+          for (const p of profiles) profilesMap[p.id] = { full_name: p.full_name, color: p.color };
+        }
+
+        for (const row of assigneeRows) {
+          if (!assigneesMap[row.intervention_id]) assigneesMap[row.intervention_id] = [];
+          const prof = profilesMap[row.profile_id];
+          if (prof) {
+            assigneesMap[row.intervention_id].push({
+              profile_id: row.profile_id,
+              full_name: prof.full_name,
+              color: prof.color,
+            });
+          }
+        }
+      }
     }
 
     // Join client info
@@ -84,16 +132,16 @@ export async function GET(request: Request) {
       }
     }
 
-    // Join assignee names
-    const assigneeIds = [...new Set((data ?? []).map((i) => i.assigned_to).filter(Boolean))];
-    let assigneesMap: Record<string, string> = {};
-    if (assigneeIds.length > 0) {
+    // Join assignee names (legacy field)
+    const legacyAssigneeIds = [...new Set((data ?? []).map((i) => i.assigned_to).filter(Boolean))];
+    let legacyAssigneesMap: Record<string, string> = {};
+    if (legacyAssigneeIds.length > 0) {
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, full_name")
-        .in("id", assigneeIds);
+        .in("id", legacyAssigneeIds);
       if (profiles) {
-        assigneesMap = Object.fromEntries(profiles.map((p) => [p.id, p.full_name]));
+        legacyAssigneesMap = Object.fromEntries(profiles.map((p) => [p.id, p.full_name]));
       }
     }
 
@@ -113,7 +161,8 @@ export async function GET(request: Request) {
     const interventions = (data ?? []).map((i) => ({
       ...i,
       client: clientsMap[i.client_id] ?? null,
-      assignee_name: assigneesMap[i.assigned_to] ?? null,
+      assignee_name: legacyAssigneesMap[i.assigned_to] ?? null,
+      assignees: assigneesMap[i.id] ?? [],
       invoice: i.invoice_id ? invoicesMap[i.invoice_id] ?? null : null,
     }));
 
@@ -136,12 +185,15 @@ export async function POST(request: Request) {
     const { supabase, organizationId } = auth;
     const body = await request.json();
 
+    const assigneeIds: string[] = body.assignee_ids ?? (body.assigned_to ? [body.assigned_to] : []);
+    const primaryAssignee = assigneeIds[0] ?? body.assigned_to;
+
     const row = {
       organization_id: organizationId,
       client_id: body.client_id,
       company_id: body.company_id || null,
       quote_id: body.quote_id || null,
-      assigned_to: body.assigned_to,
+      assigned_to: primaryAssignee,
       scheduled_date: body.scheduled_date,
       scheduled_time: body.scheduled_time,
       duration_minutes: body.duration_minutes ?? 60,
@@ -160,6 +212,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
+    // Insert into intervention_assignees for all assignees
+    if (assigneeIds.length > 0) {
+      const assigneeRows = assigneeIds.map((pid) => ({
+        intervention_id: data.id,
+        profile_id: pid,
+      }));
+      const { error: assigneeError } = await supabase
+        .from("intervention_assignees")
+        .insert(assigneeRows);
+      if (assigneeError) {
+        console.error("[api/interventions POST] Assignees insert error:", assigneeError.message);
+      }
+    }
+
     // Update prospect status to rdv_confirmed
     if (body.client_id) {
       const { error: statusError } = await supabase
@@ -173,20 +239,22 @@ export async function POST(request: Request) {
     }
 
     // Create follow_up entry for history
-    let assigneeName = "un intervenant";
+    let assigneeNames: string[] = [];
     try {
-      if (body.assigned_to) {
-        const { data: assignee } = await supabase
+      if (assigneeIds.length > 0) {
+        const { data: profiles } = await supabase
           .from("profiles")
-          .select("full_name")
-          .eq("id", body.assigned_to)
-          .single();
-        if (assignee?.full_name) assigneeName = assignee.full_name;
+          .select("id, full_name")
+          .in("id", assigneeIds);
+        if (profiles) {
+          assigneeNames = assigneeIds.map((pid) => profiles.find((p) => p.id === pid)?.full_name ?? "").filter(Boolean);
+        }
       }
 
       const rdvDate = body.scheduled_date ?? "";
       const rdvTime = body.scheduled_time ? body.scheduled_time.slice(0, 5) : "";
-      const comment = `RDV planifié le ${rdvDate} à ${rdvTime} avec ${assigneeName}`;
+      const namesStr = assigneeNames.length > 0 ? assigneeNames.join(", ") : "un intervenant";
+      const comment = `RDV planifié le ${rdvDate} à ${rdvTime} avec ${namesStr}`;
 
       const { error: followUpError } = await supabase
         .from("follow_ups")
@@ -206,7 +274,7 @@ export async function POST(request: Request) {
       console.error("[api/interventions POST] Follow-up unexpected error:", fuErr);
     }
 
-    // Création directe dans Google Calendar (si l'intervenant est connecté)
+    // Création dans Google Calendar pour CHAQUE intervenant connecté
     try {
       const { data: clientInfo } = await supabase
         .from("clients")
@@ -246,37 +314,47 @@ export async function POST(request: Request) {
         body.field_notes ? `Notes: ${body.field_notes}` : "",
       ].filter(Boolean).join("\n");
 
-      // Créer l'événement Google Calendar directement
-      const googleToken = await getValidGoogleToken(body.assigned_to);
-      if (googleToken) {
-        const gcalRes = await fetch(
-          "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${googleToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              summary: `RDV ${clientName}${companyName ? ` (${companyName})` : ""}`,
-              description,
-              location,
-              start: { dateTime: startDatetime, timeZone: "Europe/Paris" },
-              end: { dateTime: endDatetime, timeZone: "Europe/Paris" },
-              extendedProperties: { private: { source: "makematik" } },
-            }),
-          },
-        );
+      const eventBody = {
+        summary: `RDV ${clientName}${companyName ? ` (${companyName})` : ""}`,
+        description,
+        location,
+        start: { dateTime: startDatetime, timeZone: "Europe/Paris" },
+        end: { dateTime: endDatetime, timeZone: "Europe/Paris" },
+        extendedProperties: { private: { source: "makematik" } },
+      };
 
-        if (gcalRes.ok) {
-          const gcalEvent = await gcalRes.json();
-          // Stocker le google_event_id dans l'intervention
-          await supabase
-            .from("interventions")
-            .update({ google_event_id: gcalEvent.id })
-            .eq("id", data.id);
-        } else {
-          console.error("[api/interventions POST] Google Calendar error:", gcalRes.status, await gcalRes.text());
+      // Create event for each assignee with Google Calendar connected
+      for (const profileId of assigneeIds) {
+        try {
+          const googleToken = await getValidGoogleToken(profileId);
+          if (!googleToken) continue;
+
+          const gcalRes = await fetch(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${googleToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(eventBody),
+            },
+          );
+
+          if (gcalRes.ok) {
+            const gcalEvent = await gcalRes.json();
+            // Store google_event_id from the primary assignee only
+            if (profileId === primaryAssignee) {
+              await supabase
+                .from("interventions")
+                .update({ google_event_id: gcalEvent.id })
+                .eq("id", data.id);
+            }
+          } else {
+            console.error("[api/interventions POST] Google Calendar error for", profileId, ":", gcalRes.status);
+          }
+        } catch (gcalErr) {
+          console.error("[api/interventions POST] Google Calendar error for", profileId, ":", gcalErr);
         }
       }
     } catch (gcalErr) {

@@ -40,6 +40,12 @@ interface ClientInfo {
   company_id: string | null;
 }
 
+interface Assignee {
+  profile_id: string;
+  full_name: string;
+  color: string | null;
+}
+
 interface Intervention {
   id: string;
   client_id: string;
@@ -52,6 +58,7 @@ interface Intervention {
   field_notes: string | null;
   client: ClientInfo | null;
   assignee_name: string | null;
+  assignees: Assignee[];
 }
 
 interface CalendarEvent {
@@ -351,8 +358,13 @@ export default function PlanningPage() {
     else setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   }
 
-  // Filtered data
-  const filteredInterventions = interventions.filter((i) => visibleProfiles.has(i.assigned_to));
+  // Filtered data — check assignees from junction table
+  const filteredInterventions = interventions.filter((i) => {
+    if (i.assignees && i.assignees.length > 0) {
+      return i.assignees.some((a) => visibleProfiles.has(a.profile_id));
+    }
+    return visibleProfiles.has(i.assigned_to);
+  });
   const filteredCalEvents = isAdmin
     ? calendarEvents.filter((e) => visibleProfiles.has(e.profile_id))
     : calendarEvents; // Tech sees own + shared events (already filtered server-side)
@@ -653,7 +665,12 @@ export default function PlanningPage() {
 
                         {/* Interventions */}
                         {dayIvs.map((iv) => {
-                          const color = getColor(iv.assigned_to, profiles);
+                          const assigneeColors = iv.assignees?.length > 0
+                            ? iv.assignees.map((a) => a.color || getColor(a.profile_id, profiles))
+                            : [getColor(iv.assigned_to, profiles)];
+                          const assigneeNames = iv.assignees?.length > 0
+                            ? iv.assignees.map((a) => a.full_name).join(", ")
+                            : iv.assignee_name ?? "";
                           const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
                           const companyName = iv.company_id ? companies.find((c) => c.id === iv.company_id)?.name : null;
                           return (
@@ -662,17 +679,20 @@ export default function PlanningPage() {
                               onClick={() => router.push(`/app/interventions/${iv.id}`)}
                               className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 active:bg-gray-50 cursor-pointer"
                             >
-                              <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                              <div className="flex flex-col gap-0.5 shrink-0">
+                                {assigneeColors.map((c, idx) => <div key={idx} className="w-1 h-4 rounded-full" style={{ backgroundColor: c }} />)}
+                              </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm font-semibold text-gray-900">{iv.scheduled_time.slice(0, 5)}</span>
                                   <span className="text-sm text-gray-700 truncate">{clientName}</span>
                                 </div>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                                   {companyName && (
                                     <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 truncate max-w-[120px]">{companyName}</span>
                                   )}
                                   {iv.client?.city && <span className="text-xs text-gray-400 truncate">{iv.client.city}</span>}
+                                  {assigneeNames && <span className="text-xs text-gray-400 truncate">{assigneeNames}</span>}
                                 </div>
                               </div>
                               <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
@@ -727,7 +747,11 @@ export default function PlanningPage() {
                     const hasItems = dayIvs.length > 0 || dayCals.length > 0 || dayGCals.length > 0;
 
                     // Collect unique intervenant colors for dots
-                    const dotColors = [...new Set(dayIvs.map((iv) => getColor(iv.assigned_to, profiles)))];
+                    const dotColors = [...new Set(dayIvs.flatMap((iv) =>
+                      iv.assignees?.length > 0
+                        ? iv.assignees.map((a) => a.color || getColor(a.profile_id, profiles))
+                        : [getColor(iv.assigned_to, profiles)]
+                    ))];
 
                     return (
                       <div
@@ -771,7 +795,9 @@ export default function PlanningPage() {
                         <div className="px-4 py-3 text-sm text-gray-400">Aucun RDV</div>
                       )}
                       {dayIvs.map((iv) => {
-                        const color = getColor(iv.assigned_to, profiles);
+                        const assigneeColors = iv.assignees?.length > 0
+                          ? iv.assignees.map((a) => a.color || getColor(a.profile_id, profiles))
+                          : [getColor(iv.assigned_to, profiles)];
                         const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
                         const companyName = iv.company_id ? companies.find((c) => c.id === iv.company_id)?.name : null;
                         return (
@@ -780,7 +806,9 @@ export default function PlanningPage() {
                             onClick={() => router.push(`/app/interventions/${iv.id}`)}
                             className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 active:bg-gray-100 cursor-pointer"
                           >
-                            <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                            <div className="flex flex-col gap-0.5 shrink-0">
+                              {assigneeColors.map((c, idx) => <div key={idx} className="w-1 h-4 rounded-full" style={{ backgroundColor: c }} />)}
+                            </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-semibold text-gray-900">{iv.scheduled_time.slice(0, 5)}</span>
@@ -855,11 +883,20 @@ export default function PlanningPage() {
                         const startMin = timeToMinutes(iv.scheduled_time) - 7 * 60;
                         const topPx = (startMin / 60) * 64;
                         const heightPx = (iv.duration_minutes / 60) * 64;
-                        const color = getColor(iv.assigned_to, profiles);
+                        const colors = iv.assignees?.length > 0
+                          ? iv.assignees.map((a) => a.color || getColor(a.profile_id, profiles))
+                          : [getColor(iv.assigned_to, profiles)];
+                        const primaryColor = colors[0];
+                        const isOwnIv = iv.assignees?.length > 0
+                          ? iv.assignees.some((a) => a.profile_id === currentUserId)
+                          : isOwn(iv.assigned_to);
                         const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
                         return (
-                          <div key={iv.id} className="absolute rounded-md px-1.5 py-1 text-white text-xs overflow-hidden cursor-pointer hover:shadow-lg transition-shadow z-10" style={{ top: `${topPx}px`, height: `${Math.max(heightPx, 24)}px`, left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: color, opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
-                            <div className="font-medium truncate">{iv.scheduled_time.slice(0, 5)} {clientName}</div>
+                          <div key={iv.id} className="absolute rounded-md px-1.5 py-1 text-white text-xs overflow-hidden cursor-pointer hover:shadow-lg transition-shadow z-10" style={{ top: `${topPx}px`, height: `${Math.max(heightPx, 24)}px`, left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: primaryColor, opacity: isOwnIv ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
+                            <div className="font-medium truncate flex items-center gap-1">
+                              {colors.length > 1 && colors.map((c, idx) => <span key={idx} className="w-2 h-2 rounded-full shrink-0 border border-white/50" style={{ backgroundColor: c }} />)}
+                              {iv.scheduled_time.slice(0, 5)} {clientName}
+                            </div>
                             {heightPx > 32 && iv.client?.city && <div className="truncate opacity-80">{iv.client.city}</div>}
                           </div>
                         );
@@ -911,11 +948,20 @@ export default function PlanningPage() {
                       <div key={dateStr} className={`min-h-[100px] border-b border-r border-gray-50 p-1 cursor-pointer hover:bg-gray-50/50 transition-colors ${isToday ? "bg-[#6366f1]/5" : ""}`} onClick={() => handleSlotClick(dateStr, "09:00")}>
                         <div className={`text-xs font-medium mb-1 ${isToday ? "text-[#6366f1]" : "text-gray-500"}`}>{day.getDate()}</div>
                         <div className="space-y-0.5">
-                          {dayIvs.slice(0, 3).map((iv) => (
-                            <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm" style={{ backgroundColor: getColor(iv.assigned_to, profiles), opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
-                              {iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}
-                            </div>
-                          ))}
+                          {dayIvs.slice(0, 3).map((iv) => {
+                            const pColor = iv.assignees?.length > 0
+                              ? (iv.assignees[0].color || getColor(iv.assignees[0].profile_id, profiles))
+                              : getColor(iv.assigned_to, profiles);
+                            const isOwnIv = iv.assignees?.length > 0
+                              ? iv.assignees.some((a) => a.profile_id === currentUserId)
+                              : isOwn(iv.assigned_to);
+                            return (
+                              <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm flex items-center gap-0.5" style={{ backgroundColor: pColor, opacity: isOwnIv ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
+                                {iv.assignees?.length > 1 && iv.assignees.slice(1).map((a, idx) => <span key={idx} className="w-1.5 h-1.5 rounded-full shrink-0 border border-white/50" style={{ backgroundColor: a.color || getColor(a.profile_id, profiles) }} />)}
+                                {iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}
+                              </div>
+                            );
+                          })}
                           {dayCals.slice(0, 2).map((e) => <div key={e.id} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: isOwnCal(e.profile_id) ? "#9E9E9E" : "#E0E0E0", color: isOwnCal(e.profile_id) ? "#fff" : "#757575" }}>{calTitle(e.title, e.profile_id)}</div>)}
                           {dayGCals.slice(0, 2).map((e) => <div key={`g-${e.google_event_id}`} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: e.profile_id === currentUserId ? "#9E9E9E" : "#E0E0E0", color: e.profile_id === currentUserId ? "#fff" : "#757575" }}>{calTitle(e.title, e.profile_id)}</div>)}
                           {dayIvs.length > 3 && <div className="text-[10px] text-gray-400">+{dayIvs.length - 3} de plus</div>}
@@ -1008,22 +1054,19 @@ function NewRdvModal({
   const [clientResults, setClientResults] = useState<SearchClient[]>([]);
   const [selectedClient, setSelectedClient] = useState<SearchClient | null>(prefillClient);
 
-  const [assignedTo, setAssignedTo] = useState("");
+  const [selectedAssignees, setSelectedAssignees] = useState<Set<string>>(new Set());
   const [date, setDate] = useState(prefillDate ?? fmt(new Date()));
   const [time, setTime] = useState(prefillTime ?? "09:00");
   const [duration, setDuration] = useState(prefillClient ? durationFromSplits(prefillClient.nb_splits) : 60);
   const [notes, setNotes] = useState("");
 
-  // Set default assignedTo once profiles are available
+  // Pre-select current user once profiles are available
   useEffect(() => {
-    console.log("[planning modal] profiles:", profiles.length, "assignedTo:", assignedTo, "currentUserId:", currentUserId);
-    if (profiles.length > 0 && !assignedTo) {
+    if (profiles.length > 0 && selectedAssignees.size === 0) {
       const match = profiles.find((p) => p.id === currentUserId);
-      const newVal = match ? match.id : profiles[0].id;
-      console.log("[planning modal] Setting assignedTo to:", newVal);
-      setAssignedTo(newVal);
+      setSelectedAssignees(new Set([match ? match.id : profiles[0].id]));
     }
-  }, [profiles, currentUserId, assignedTo]);
+  }, [profiles, currentUserId, selectedAssignees.size]);
 
   // Auto-duration when client changes (manual selection, not prefill)
   useEffect(() => {
@@ -1049,16 +1092,25 @@ function NewRdvModal({
     } catch { setClientResults([]); }
   }
 
+  function toggleAssignee(id: string) {
+    setSelectedAssignees((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   async function handleSubmit() {
     setError("");
     if (!selectedClient) { setError("Sélectionnez un prospect"); return; }
-    if (!assignedTo) { setError("Sélectionnez un intervenant"); return; }
+    if (selectedAssignees.size === 0) { setError("Sélectionnez au moins un intervenant"); return; }
     if (!date) { setError("Choisissez une date"); return; }
 
     setSaving(true);
     const token = await getToken();
     if (!token) { setError("Session expirée"); setSaving(false); return; }
 
+    const assigneeIds = [...selectedAssignees];
     try {
       const res = await fetch("/api/interventions", {
         method: "POST",
@@ -1067,7 +1119,8 @@ function NewRdvModal({
           client_id: selectedClient.id,
           company_id: selectedClient.company_id,
           quote_id: prefillQuoteId || null,
-          assigned_to: assignedTo,
+          assignee_ids: assigneeIds,
+          assigned_to: assigneeIds[0],
           scheduled_date: date,
           scheduled_time: time,
           duration_minutes: duration,
@@ -1131,19 +1184,23 @@ function NewRdvModal({
             )}
           </div>
 
-          {/* Intervenant */}
+          {/* Intervenants (multi-select) */}
           <div>
-            <label className={labelCls}>Intervenant</label>
-            <select
-              className={inputCls}
-              value={assignedTo}
-              onChange={(e) => { console.log("[planning] intervenant changed:", e.target.value); setAssignedTo(e.target.value); }}
-            >
-              <option value="">Choisir un intervenant</option>
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.full_name}</option>
-              ))}
-            </select>
+            <label className={labelCls}>Intervenants</label>
+            <div className="space-y-1.5 p-3 rounded-lg bg-gray-50 border border-gray-200">
+              {profiles.map((p) => {
+                const checked = selectedAssignees.has(p.id);
+                const color = p.color || COLOR_PALETTE[profiles.indexOf(p) % COLOR_PALETTE.length] || COLOR_PALETTE[0];
+                return (
+                  <label key={p.id} className="flex items-center gap-2.5 cursor-pointer select-none py-0.5">
+                    <input type="checkbox" checked={checked} onChange={() => toggleAssignee(p.id)} className="rounded border-gray-300 text-[#6366f1] focus:ring-[#6366f1]/20" />
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                    <span className={`text-sm ${checked ? "text-gray-900 font-medium" : "text-gray-500"}`}>{p.full_name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {selectedAssignees.size === 0 && <p className="text-xs text-red-500 mt-1">Au moins un intervenant requis</p>}
           </div>
 
           {/* Date + Time */}

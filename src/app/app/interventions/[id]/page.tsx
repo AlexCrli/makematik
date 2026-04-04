@@ -45,6 +45,12 @@ interface QuoteLine {
   total_ht: number;
 }
 
+interface InterventionAssignee {
+  profile_id: string;
+  full_name: string;
+  color: string | null;
+}
+
 interface Intervention {
   id: string;
   client_id: string;
@@ -61,6 +67,7 @@ interface Intervention {
   completed_at: string | null;
   client: Client | null;
   assignee_name: string | null;
+  assignees?: InterventionAssignee[];
   quote: Quote | null;
 }
 
@@ -678,7 +685,9 @@ export default function InterventionDetailPage() {
           <Card title="Récapitulatif">
             <InfoRow label="Client" value={client ? `${client.first_name} ${client.last_name}` : "—"} />
             <InfoRow label="Date" value={formatDateFr(intervention.scheduled_date, intervention.scheduled_time)} />
-            {intervention.assignee_name && <InfoRow label="Intervenant" value={intervention.assignee_name} />}
+            {(intervention.assignees?.length ?? 0) > 0
+              ? <InfoRow label={intervention.assignees!.length > 1 ? "Intervenants" : "Intervenant"} value={intervention.assignees!.map((a) => a.full_name).join(", ")} />
+              : intervention.assignee_name && <InfoRow label="Intervenant" value={intervention.assignee_name} />}
             {client?.company_name && <InfoRow label="Société" value={client.company_name} />}
             {intervention.field_notes && (
               <div className="py-2 border-b border-gray-50">
@@ -745,7 +754,9 @@ function DetailCards({ client, intervention }: { client: Client | null; interven
       <Card title="Détails RDV">
         <InfoRow label="Date et heure" value={formatDateFr(intervention.scheduled_date, intervention.scheduled_time)} />
         <InfoRow label="Durée" value={formatDuration(intervention.duration_minutes)} />
-        {intervention.assignee_name && <InfoRow label="Intervenant" value={intervention.assignee_name} />}
+        {(intervention.assignees?.length ?? 0) > 0
+              ? <InfoRow label={intervention.assignees!.length > 1 ? "Intervenants" : "Intervenant"} value={intervention.assignees!.map((a) => a.full_name).join(", ")} />
+              : intervention.assignee_name && <InfoRow label="Intervenant" value={intervention.assignee_name} />}
         {intervention.quote?.quote_number && (
           <div className="flex justify-between items-center py-2">
             <span className="text-sm text-gray-500">Devis</span>
