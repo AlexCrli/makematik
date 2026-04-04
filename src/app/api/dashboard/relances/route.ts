@@ -42,7 +42,8 @@ export async function GET(request: Request) {
 
     const today = new Date().toISOString().split("T")[0];
 
-    // Prospects to follow up: status "new" OR next_contact_date <= today
+    // Prospects to follow up: status "new" or "to_recall" only
+    // Exclude rdv_confirmed, quote_sent, client, lost
     const { data: newProspects } = await supabase
       .from("clients")
       .select("id, first_name, last_name, phone, city, status, next_contact_date, company_id")
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
       .from("clients")
       .select("id, first_name, last_name, phone, city, status, next_contact_date, company_id")
       .eq("organization_id", organizationId)
+      .in("status", ["new", "to_recall"])
       .lte("next_contact_date", today)
       .order("next_contact_date", { ascending: true });
 

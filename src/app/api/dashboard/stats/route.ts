@@ -80,6 +80,34 @@ export async function GET(request: Request) {
     const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     const facturesOverdue = pending.filter((i) => i.payment_due_date && i.payment_due_date < todayStr).length;
 
+    // CA this month (paid invoices)
+    const thisMonthStart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`;
+    const { data: paidThisMonth } = await supabase
+      .from("invoices")
+      .select("total_ttc")
+      .eq("organization_id", organizationId)
+      .eq("status", "paid")
+      .gte("payment_date", thisMonthStart)
+      .lte("payment_date", todayStr);
+
+    const caThisMonth = (paidThisMonth ?? []).reduce((s, i) => s + (i.total_ttc ?? 0), 0);
+
+    // CA last month
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    const lastMonthStart = `${lastMonth.getFullYear()}-${pad(lastMonth.getMonth() + 1)}-01`;
+    const lastMonthEndStr = `${lastMonthEnd.getFullYear()}-${pad(lastMonthEnd.getMonth() + 1)}-${pad(lastMonthEnd.getDate())}`;
+
+    const { data: paidLastMonth } = await supabase
+      .from("invoices")
+      .select("total_ttc")
+      .eq("organization_id", organizationId)
+      .eq("status", "paid")
+      .gte("payment_date", lastMonthStart)
+      .lte("payment_date", lastMonthEndStr);
+
+    const caLastMonth = (paidLastMonth ?? []).reduce((s, i) => s + (i.total_ttc ?? 0), 0);
+
     return NextResponse.json({
       prospects_this_month: prospectsThisMonth ?? 0,
       devis_en_attente: devisEnAttente ?? 0,
@@ -87,6 +115,8 @@ export async function GET(request: Request) {
       factures_pending: facturesPending,
       factures_pending_amount: facturesPendingAmount,
       factures_overdue: facturesOverdue,
+      ca_this_month: caThisMonth,
+      ca_last_month: caLastMonth,
     });
   } catch (err) {
     console.error("[api/dashboard/stats] Unexpected:", err);

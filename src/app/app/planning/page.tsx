@@ -97,7 +97,9 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 };
 
 const DAYS_FR = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+const DAYS_FR_FULL = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 const MONTHS_FR = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+const MONTHS_FR_SHORT = ["janv.", "fév.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -193,6 +195,12 @@ export default function PlanningPage() {
   const [googleCalEvents, setGoogleCalEvents] = useState<GoogleCalEvent[]>([]);
   const [myGoogleConnected, setMyGoogleConnected] = useState(false);
   const [myGoogleEmail, setMyGoogleEmail] = useState<string | null>(null);
+  const [shareCalendar, setShareCalendar] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Mobile
+  const [mobileExpandedDay, setMobileExpandedDay] = useState<string | null>(null);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
 
   // Prospect banner mode
   const [pendingProspect, setPendingProspect] = useState<SearchClient | null>(null);
@@ -235,6 +243,7 @@ export default function PlanningPage() {
         if (myProfile) {
           setMyGoogleConnected(myProfile.google_calendar_connected ?? false);
           setMyGoogleEmail(myProfile.google_email ?? null);
+          setShareCalendar(myProfile.share_personal_calendar ?? false);
         }
       } catch (err) {
         console.error("[planning] Profiles fetch error:", err);
@@ -374,6 +383,8 @@ export default function PlanningPage() {
 
   function isOwn(assignedTo: string): boolean { return assignedTo === currentUserId; }
   function isOwnCal(profileId: string): boolean { return profileId === currentUserId; }
+  /** Display title for personal events: own → real title, other → "Occupé" */
+  function calTitle(title: string, profileId: string): string { return profileId === currentUserId ? title : "Occupé"; }
 
   // Google Calendar filtered events (visible profiles only for admin, all for tech)
   const filteredGoogleEvents = isAdmin
@@ -392,14 +403,37 @@ export default function PlanningPage() {
     setGoogleCalEvents([]);
   }
 
+  async function handleToggleShare() {
+    const newVal = !shareCalendar;
+    setShareCalendar(newVal); // optimistic
+    const token = await getToken();
+    if (!token) { setShareCalendar(!newVal); return; }
+    try {
+      const res = await fetch("/api/profiles/me", {
+        method: "PUT",
+        headers: authHeaders(token),
+        body: JSON.stringify({ share_personal_calendar: newVal }),
+      });
+      if (!res.ok) { setShareCalendar(!newVal); return; }
+      setToastMsg(newVal ? "Agenda partagé" : "Agenda masqué");
+      setTimeout(() => setToastMsg(null), 2500);
+    } catch {
+      setShareCalendar(!newVal);
+    }
+  }
+
+  const mobileTitle = view === "week"
+    ? `Sem. ${weekStart.getDate()}-${weekEnd.getDate()} ${MONTHS_FR_SHORT[weekStart.getMonth()]}`
+    : `${MONTHS_FR[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+
   const pendingCompanyName = pendingProspect?.company_id
     ? companies.find((c) => c.id === pendingProspect.company_id)?.name
     : null;
 
   return (
     <div>
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      {/* Header — Desktop */}
+      <div className="hidden md:flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Planning</h1>
         {isAdmin && (
           <button
@@ -412,28 +446,56 @@ export default function PlanningPage() {
         )}
       </div>
 
+      {/* Header — Mobile */}
+      <div className="md:hidden mb-4">
+        <h1 className="text-lg font-bold text-gray-900 mb-3">Planning</h1>
+      </div>
+
       {/* Google Calendar connection */}
-      <div className="mb-4 flex items-center gap-3">
-        {myGoogleConnected ? (
-          <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200 text-sm">
-            <svg className="w-4 h-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-            <span className="text-green-700 font-medium">Google Calendar connecté</span>
-            {myGoogleEmail && <span className="text-gray-500">({myGoogleEmail})</span>}
-            <button
-              onClick={handleGoogleDisconnect}
-              className="ml-2 text-xs text-gray-400 hover:text-red-500 transition-colors"
+      <div className="mb-4 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+          {myGoogleConnected ? (
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200 text-sm">
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              <span className="text-green-700 font-medium hidden sm:inline">Google Calendar connecté</span>
+              <span className="text-green-700 font-medium sm:hidden">Connecté</span>
+              {myGoogleEmail && <span className="text-gray-500 hidden sm:inline">({myGoogleEmail})</span>}
+              <button
+                onClick={handleGoogleDisconnect}
+                className="ml-1 text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                Déconnecter
+              </button>
+            </div>
+          ) : (
+            <a
+              href={`/api/google/auth?profile_id=${currentUserId}`}
+              className="inline-flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors"
             >
-              Déconnecter
-            </button>
-          </div>
-        ) : (
-          <a
-            href={`/api/google/auth?profile_id=${currentUserId}`}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 transition-colors"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-            Connecter Google Calendar
-          </a>
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+              <span className="hidden sm:inline">Connecter Google Calendar</span>
+              <span className="sm:hidden">Google Calendar</span>
+            </a>
+          )}
+          {myGoogleConnected && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={shareCalendar}
+                onClick={handleToggleShare}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${shareCalendar ? "bg-[#6366f1]" : "bg-gray-300"}`}
+              >
+                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${shareCalendar ? "translate-x-[18px]" : "translate-x-[3px]"}`} />
+              </button>
+              <span className="text-sm text-gray-700">Partager mon agenda</span>
+            </label>
+          )}
+        </div>
+        {myGoogleConnected && (
+          <p className="text-xs text-gray-400 ml-0.5">
+            Si activé, vos événements personnels Google Calendar seront visibles par l&apos;administrateur sur le planning (les détails restent masqués, seuls les créneaux occupés sont affichés).
+          </p>
         )}
       </div>
 
@@ -471,8 +533,56 @@ export default function PlanningPage() {
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
+      {/* Toolbar — Mobile */}
+      <div className="md:hidden bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-4">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="flex items-center gap-1">
+            <button onClick={goPrev} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
+            </button>
+            <button onClick={goToday} className="px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors">{"Auj."}</button>
+            <button onClick={goNext} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
+              <svg className="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+            </button>
+          </div>
+          <span className="text-sm font-semibold text-gray-900 truncate">{mobileTitle}</span>
+          <div className="flex bg-gray-100 rounded-lg p-0.5">
+            <button onClick={() => { setView("week"); setCurrentDate(getMonday(new Date())); }} className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${view === "week" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>Sem.</button>
+            <button onClick={() => { setView("month"); setCurrentDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)); }} className={`px-2 py-1 text-xs font-medium rounded-md transition-colors ${view === "month" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500"}`}>Mois</button>
+          </div>
+        </div>
+        {isAdmin && profiles.length > 1 && (
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" /></svg>
+              Intervenants ({visibleProfiles.size}/{profiles.length})
+            </button>
+            {showFilterDropdown && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowFilterDropdown(false)} />
+                <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-20 min-w-[180px]">
+                  {profiles.map((p) => {
+                    const color = getColor(p.id, profiles);
+                    const checked = visibleProfiles.has(p.id);
+                    return (
+                      <button key={p.id} onClick={() => toggleProfile(p.id)} className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 transition-colors">
+                        <span className="w-3 h-3 rounded-full border-2 shrink-0" style={{ backgroundColor: checked ? color : "transparent", borderColor: color }} />
+                        <span className={checked ? "text-gray-700" : "text-gray-400"}>{p.full_name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Toolbar — Desktop */}
+      <div className="hidden md:block bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <button onClick={goPrev} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
@@ -513,105 +623,311 @@ export default function PlanningPage() {
         <div className="flex items-center justify-center py-32">
           <div className="w-6 h-6 border-2 border-[#6366f1] border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : view === "week" ? (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <div className="min-w-[800px]">
-              <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-100">
-                <div className="p-2" />
-                {weekDays.map((day) => {
-                  const isToday = fmt(day) === fmt(new Date());
-                  return (
-                    <div key={fmt(day)} className={`p-2 text-center border-l border-gray-100 ${isToday ? "bg-[#6366f1]/5" : ""}`}>
-                      <div className="text-xs text-gray-500">{DAYS_FR[(day.getDay() + 6) % 7]}</div>
-                      <div className={`text-sm font-semibold ${isToday ? "text-[#6366f1]" : "text-gray-900"}`}>{day.getDate()}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="relative">
-                {HOURS.map((hour) => (
-                  <div key={hour} className="grid grid-cols-[60px_repeat(7,1fr)] h-16 border-b border-gray-50">
-                    <div className="text-xs text-gray-400 text-right pr-2 pt-0.5">{hour}h</div>
-                    {weekDays.map((day) => (
-                      <div key={fmt(day) + hour} className="border-l border-gray-50 relative cursor-pointer hover:bg-gray-50/50 transition-colors" onClick={() => handleSlotClick(fmt(day), `${hour.toString().padStart(2, "0")}:00`)} />
-                    ))}
-                  </div>
-                ))}
-                {filteredInterventions.map((iv) => {
-                  const dayIdx = weekDays.findIndex((d) => fmt(d) === iv.scheduled_date);
-                  if (dayIdx < 0) return null;
-                  const startMin = timeToMinutes(iv.scheduled_time) - 7 * 60;
-                  const topPx = (startMin / 60) * 64;
-                  const heightPx = (iv.duration_minutes / 60) * 64;
-                  const color = getColor(iv.assigned_to, profiles);
-                  const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
-                  return (
-                    <div key={iv.id} className="absolute rounded-md px-1.5 py-1 text-white text-xs overflow-hidden cursor-pointer hover:shadow-lg transition-shadow z-10" style={{ top: `${topPx}px`, height: `${Math.max(heightPx, 24)}px`, left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: color, opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
-                      <div className="font-medium truncate">{iv.scheduled_time.slice(0, 5)} {clientName}</div>
-                      {heightPx > 32 && iv.client?.city && <div className="truncate opacity-80">{iv.client.city}</div>}
-                    </div>
-                  );
-                })}
-                {filteredCalEvents.map((evt) => {
-                  const dayIdx = weekDays.findIndex((d) => fmt(d) === evt.start_date);
-                  if (dayIdx < 0) return null;
-                  const own = isOwnCal(evt.profile_id);
-                  const baseStyle = { left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: own ? "#9E9E9E" : "#E0E0E0", color: own ? "#fff" : "#757575", ...(own ? {} : { backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px)" }) };
-                  if (evt.all_day || !evt.start_time) {
-                    return <div key={evt.id} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: "0px", height: "20px", ...baseStyle }}><div className="truncate">{evt.title}</div></div>;
-                  }
-                  const startMin = timeToMinutes(evt.start_time) - 7 * 60;
-                  const endMin = evt.end_time ? timeToMinutes(evt.end_time) - 7 * 60 : startMin + 60;
-                  return <div key={evt.id} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: `${(startMin / 60) * 64}px`, height: `${Math.max(((endMin - startMin) / 60) * 64, 20)}px`, ...baseStyle }}><div className="truncate">{evt.title}</div></div>;
-                })}
-                {filteredGoogleEvents.map((gEvt) => {
-                  const dayIdx = weekDays.findIndex((d) => fmt(d) === gEvt.start_date);
-                  if (dayIdx < 0) return null;
-                  const own = gEvt.profile_id === currentUserId;
-                  const baseStyle = { left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: own ? "#9E9E9E" : "#E0E0E0", color: own ? "#fff" : "#757575", ...(own ? {} : { backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px)" }) };
-                  if (gEvt.all_day || !gEvt.start_time) {
-                    return <div key={`g-${gEvt.google_event_id}`} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: "0px", height: "20px", ...baseStyle }}><div className="truncate">{gEvt.title}</div></div>;
-                  }
-                  const startMin = timeToMinutes(gEvt.start_time) - 7 * 60;
-                  const endMin = gEvt.end_time ? timeToMinutes(gEvt.end_time) - 7 * 60 : startMin + 60;
-                  return <div key={`g-${gEvt.google_event_id}`} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: `${(startMin / 60) * 64}px`, height: `${Math.max(((endMin - startMin) / 60) * 64, 20)}px`, ...baseStyle }}><div className="truncate">{gEvt.title}</div></div>;
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
       ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="grid grid-cols-7 border-b border-gray-100">
-            {DAYS_FR.map((d) => <div key={d} className="p-2 text-center text-xs font-semibold text-gray-500 uppercase">{d}</div>)}
-          </div>
-          <div className="grid grid-cols-7">
-            {monthCells.map((day, i) => {
-              if (!day) return <div key={`empty-${i}`} className="min-h-[100px] border-b border-r border-gray-50 bg-gray-50/30" />;
-              const dateStr = fmt(day);
-              const isToday = dateStr === fmt(new Date());
-              const dayIvs = filteredInterventions.filter((iv) => iv.scheduled_date === dateStr);
-              const dayCals = filteredCalEvents.filter((e) => e.start_date === dateStr);
-              const dayGCals = filteredGoogleEvents.filter((e) => e.start_date === dateStr);
-              return (
-                <div key={dateStr} className={`min-h-[100px] border-b border-r border-gray-50 p-1 cursor-pointer hover:bg-gray-50/50 transition-colors ${isToday ? "bg-[#6366f1]/5" : ""}`} onClick={() => handleSlotClick(dateStr, "09:00")}>
-                  <div className={`text-xs font-medium mb-1 ${isToday ? "text-[#6366f1]" : "text-gray-500"}`}>{day.getDate()}</div>
-                  <div className="space-y-0.5">
-                    {dayIvs.slice(0, 3).map((iv) => (
-                      <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm" style={{ backgroundColor: getColor(iv.assigned_to, profiles), opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
-                        {iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}
+        <>
+          {/* ==================== MOBILE VIEWS ==================== */}
+          <div className="md:hidden">
+            {view === "week" ? (
+              /* --- Mobile Week: vertical day list --- */
+              <div className="space-y-1">
+                {weekDays.map((day) => {
+                  const dateStr = fmt(day);
+                  const isToday = dateStr === fmt(new Date());
+                  const dayIdx = (day.getDay() + 6) % 7;
+                  const dayIvs = filteredInterventions.filter((iv) => iv.scheduled_date === dateStr).sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+                  const dayCals = filteredCalEvents.filter((e) => e.start_date === dateStr);
+                  const dayGCals = filteredGoogleEvents.filter((e) => e.start_date === dateStr);
+                  const hasItems = dayIvs.length > 0 || dayCals.length > 0 || dayGCals.length > 0;
+
+                  return (
+                    <div key={dateStr}>
+                      {/* Day header — sticky */}
+                      <div className={`sticky top-0 z-10 px-3 py-2 text-sm font-semibold border-b border-gray-100 ${isToday ? "bg-[#6366f1]/10 text-[#6366f1]" : "bg-gray-50 text-gray-700"}`}>
+                        {DAYS_FR_FULL[dayIdx]} {day.getDate()} {MONTHS_FR_SHORT[day.getMonth()]}
                       </div>
-                    ))}
-                    {dayCals.slice(0, 2).map((e) => <div key={e.id} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: isOwnCal(e.profile_id) ? "#9E9E9E" : "#E0E0E0", color: isOwnCal(e.profile_id) ? "#fff" : "#757575" }}>{e.title}</div>)}
-                    {dayGCals.slice(0, 2).map((e) => <div key={`g-${e.google_event_id}`} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: e.profile_id === currentUserId ? "#9E9E9E" : "#E0E0E0", color: e.profile_id === currentUserId ? "#fff" : "#757575" }}>{e.title}</div>)}
-                    {dayIvs.length > 3 && <div className="text-[10px] text-gray-400">+{dayIvs.length - 3} de plus</div>}
+
+                      <div className="bg-white">
+                        {!hasItems && (
+                          <div className="px-4 py-3 text-sm text-gray-400">Aucun RDV</div>
+                        )}
+
+                        {/* Interventions */}
+                        {dayIvs.map((iv) => {
+                          const color = getColor(iv.assigned_to, profiles);
+                          const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
+                          const companyName = iv.company_id ? companies.find((c) => c.id === iv.company_id)?.name : null;
+                          return (
+                            <div
+                              key={iv.id}
+                              onClick={() => router.push(`/app/interventions/${iv.id}`)}
+                              className="flex items-center gap-3 px-4 py-3 border-b border-gray-50 active:bg-gray-50 cursor-pointer"
+                            >
+                              <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-semibold text-gray-900">{iv.scheduled_time.slice(0, 5)}</span>
+                                  <span className="text-sm text-gray-700 truncate">{clientName}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {companyName && (
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 truncate max-w-[120px]">{companyName}</span>
+                                  )}
+                                  {iv.client?.city && <span className="text-xs text-gray-400 truncate">{iv.client.city}</span>}
+                                </div>
+                              </div>
+                              <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                            </div>
+                          );
+                        })}
+
+                        {/* Calendar events */}
+                        {dayCals.map((evt) => (
+                          <div key={evt.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-50">
+                            <div className="w-1 h-6 rounded-full shrink-0 bg-gray-300" />
+                            <span className="text-xs text-gray-500">
+                              {evt.start_time ?? "Journée"}{evt.end_time ? ` – ${evt.end_time}` : ""}{" "}
+                              <span className="text-gray-400">{calTitle(evt.title, evt.profile_id)}</span>
+                            </span>
+                          </div>
+                        ))}
+
+                        {/* Google Calendar events */}
+                        {dayGCals.map((gEvt) => {
+                          const own = gEvt.profile_id === currentUserId;
+                          return (
+                            <div key={`g-${gEvt.google_event_id}`} className="flex items-center gap-3 px-4 py-2 border-b border-gray-50">
+                              <div className="w-1 h-6 rounded-full shrink-0" style={{ backgroundColor: own ? "#9E9E9E" : getColor(gEvt.profile_id, profiles) }} />
+                              <span className="text-xs text-gray-500">
+                                {gEvt.start_time ?? "Journée"}{gEvt.end_time ? ` – ${gEvt.end_time}` : ""}{" "}
+                                <span className="text-gray-400">{own ? gEvt.title : "Occupé"}</span>
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* --- Mobile Month: compact grid + accordion --- */
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="grid grid-cols-7 border-b border-gray-100">
+                  {DAYS_FR.map((d) => <div key={d} className="py-2 text-center text-[10px] font-semibold text-gray-400 uppercase">{d[0]}</div>)}
+                </div>
+                <div className="grid grid-cols-7">
+                  {monthCells.map((day, i) => {
+                    if (!day) return <div key={`empty-${i}`} className="aspect-square border-b border-r border-gray-50 bg-gray-50/30" />;
+                    const dateStr = fmt(day);
+                    const isToday = dateStr === fmt(new Date());
+                    const isExpanded = mobileExpandedDay === dateStr;
+                    const dayIvs = filteredInterventions.filter((iv) => iv.scheduled_date === dateStr);
+                    const dayGCals = filteredGoogleEvents.filter((e) => e.start_date === dateStr);
+                    const dayCals = filteredCalEvents.filter((e) => e.start_date === dateStr);
+                    const hasItems = dayIvs.length > 0 || dayCals.length > 0 || dayGCals.length > 0;
+
+                    // Collect unique intervenant colors for dots
+                    const dotColors = [...new Set(dayIvs.map((iv) => getColor(iv.assigned_to, profiles)))];
+
+                    return (
+                      <div
+                        key={dateStr}
+                        className={`aspect-square border-b border-r border-gray-50 flex flex-col items-center justify-center cursor-pointer transition-colors ${isToday ? "bg-[#6366f1]/10" : ""} ${isExpanded ? "ring-2 ring-[#6366f1] ring-inset" : ""}`}
+                        onClick={() => setMobileExpandedDay(isExpanded ? null : dateStr)}
+                      >
+                        <span className={`text-sm font-medium ${isToday ? "text-[#6366f1] font-bold" : "text-gray-700"}`}>{day.getDate()}</span>
+                        {hasItems && (
+                          <div className="flex gap-0.5 mt-0.5">
+                            {dotColors.slice(0, 3).map((c, idx) => (
+                              <span key={idx} className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c }} />
+                            ))}
+                            {(dayCals.length > 0 || dayGCals.length > 0) && dotColors.length === 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                            )}
+                            {(dayCals.length > 0 || dayGCals.length > 0) && dotColors.length > 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Accordion: expanded day details */}
+                {mobileExpandedDay && (() => {
+                  const dayIvs = filteredInterventions.filter((iv) => iv.scheduled_date === mobileExpandedDay).sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time));
+                  const dayCals = filteredCalEvents.filter((e) => e.start_date === mobileExpandedDay);
+                  const dayGCals = filteredGoogleEvents.filter((e) => e.start_date === mobileExpandedDay);
+                  const expandedDate = new Date(mobileExpandedDay + "T00:00:00");
+                  const dayIdx = (expandedDate.getDay() + 6) % 7;
+
+                  return (
+                    <div className="border-t border-gray-200 bg-gray-50/50">
+                      <div className="px-3 py-2 text-xs font-semibold text-gray-500 border-b border-gray-100">
+                        {DAYS_FR_FULL[dayIdx]} {expandedDate.getDate()} {MONTHS_FR_SHORT[expandedDate.getMonth()]}
+                      </div>
+                      {dayIvs.length === 0 && dayCals.length === 0 && dayGCals.length === 0 && (
+                        <div className="px-4 py-3 text-sm text-gray-400">Aucun RDV</div>
+                      )}
+                      {dayIvs.map((iv) => {
+                        const color = getColor(iv.assigned_to, profiles);
+                        const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
+                        const companyName = iv.company_id ? companies.find((c) => c.id === iv.company_id)?.name : null;
+                        return (
+                          <div
+                            key={iv.id}
+                            onClick={() => router.push(`/app/interventions/${iv.id}`)}
+                            className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 active:bg-gray-100 cursor-pointer"
+                          >
+                            <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-gray-900">{iv.scheduled_time.slice(0, 5)}</span>
+                                <span className="text-sm text-gray-700 truncate">{clientName}</span>
+                              </div>
+                              {companyName && (
+                                <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700">{companyName}</span>
+                              )}
+                            </div>
+                            <svg className="w-4 h-4 text-gray-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                          </div>
+                        );
+                      })}
+                      {dayCals.map((evt) => (
+                        <div key={evt.id} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100">
+                          <div className="w-1 h-6 rounded-full shrink-0 bg-gray-300" />
+                          <span className="text-xs text-gray-500">
+                            {evt.start_time ?? "Journée"}{evt.end_time ? ` – ${evt.end_time}` : ""}{" "}
+                            <span className="text-gray-400">{calTitle(evt.title, evt.profile_id)}</span>
+                          </span>
+                        </div>
+                      ))}
+                      {dayGCals.map((gEvt) => {
+                        const own = gEvt.profile_id === currentUserId;
+                        return (
+                          <div key={`g-${gEvt.google_event_id}`} className="flex items-center gap-3 px-4 py-2 border-b border-gray-100">
+                            <div className="w-1 h-6 rounded-full shrink-0" style={{ backgroundColor: own ? "#9E9E9E" : getColor(gEvt.profile_id, profiles) }} />
+                            <span className="text-xs text-gray-500">
+                              {gEvt.start_time ?? "Journée"}{gEvt.end_time ? ` – ${gEvt.end_time}` : ""}{" "}
+                              <span className="text-gray-400">{own ? gEvt.title : "Occupé"}</span>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* ==================== DESKTOP VIEWS ==================== */}
+          <div className="hidden md:block">
+            {view === "week" ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <div className="min-w-[800px]">
+                    <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-100">
+                      <div className="p-2" />
+                      {weekDays.map((day) => {
+                        const isToday = fmt(day) === fmt(new Date());
+                        return (
+                          <div key={fmt(day)} className={`p-2 text-center border-l border-gray-100 ${isToday ? "bg-[#6366f1]/5" : ""}`}>
+                            <div className="text-xs text-gray-500">{DAYS_FR[(day.getDay() + 6) % 7]}</div>
+                            <div className={`text-sm font-semibold ${isToday ? "text-[#6366f1]" : "text-gray-900"}`}>{day.getDate()}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="relative">
+                      {HOURS.map((hour) => (
+                        <div key={hour} className="grid grid-cols-[60px_repeat(7,1fr)] h-16 border-b border-gray-50">
+                          <div className="text-xs text-gray-400 text-right pr-2 pt-0.5">{hour}h</div>
+                          {weekDays.map((day) => (
+                            <div key={fmt(day) + hour} className="border-l border-gray-50 relative cursor-pointer hover:bg-gray-50/50 transition-colors" onClick={() => handleSlotClick(fmt(day), `${hour.toString().padStart(2, "0")}:00`)} />
+                          ))}
+                        </div>
+                      ))}
+                      {filteredInterventions.map((iv) => {
+                        const dayIdx = weekDays.findIndex((d) => fmt(d) === iv.scheduled_date);
+                        if (dayIdx < 0) return null;
+                        const startMin = timeToMinutes(iv.scheduled_time) - 7 * 60;
+                        const topPx = (startMin / 60) * 64;
+                        const heightPx = (iv.duration_minutes / 60) * 64;
+                        const color = getColor(iv.assigned_to, profiles);
+                        const clientName = iv.client ? `${iv.client.first_name} ${iv.client.last_name}` : "—";
+                        return (
+                          <div key={iv.id} className="absolute rounded-md px-1.5 py-1 text-white text-xs overflow-hidden cursor-pointer hover:shadow-lg transition-shadow z-10" style={{ top: `${topPx}px`, height: `${Math.max(heightPx, 24)}px`, left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: color, opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
+                            <div className="font-medium truncate">{iv.scheduled_time.slice(0, 5)} {clientName}</div>
+                            {heightPx > 32 && iv.client?.city && <div className="truncate opacity-80">{iv.client.city}</div>}
+                          </div>
+                        );
+                      })}
+                      {filteredCalEvents.map((evt) => {
+                        const dayIdx = weekDays.findIndex((d) => fmt(d) === evt.start_date);
+                        if (dayIdx < 0) return null;
+                        const own = isOwnCal(evt.profile_id);
+                        const label = calTitle(evt.title, evt.profile_id);
+                        const baseStyle = { left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: own ? "#9E9E9E" : "#E0E0E0", color: own ? "#fff" : "#757575", ...(own ? {} : { backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px)" }) };
+                        if (evt.all_day || !evt.start_time) {
+                          return <div key={evt.id} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: "0px", height: "20px", ...baseStyle }}><div className="truncate">{label}</div></div>;
+                        }
+                        const startMin = timeToMinutes(evt.start_time) - 7 * 60;
+                        const endMin = evt.end_time ? timeToMinutes(evt.end_time) - 7 * 60 : startMin + 60;
+                        return <div key={evt.id} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: `${(startMin / 60) * 64}px`, height: `${Math.max(((endMin - startMin) / 60) * 64, 20)}px`, ...baseStyle }}><div className="truncate">{label}</div></div>;
+                      })}
+                      {filteredGoogleEvents.map((gEvt) => {
+                        const dayIdx = weekDays.findIndex((d) => fmt(d) === gEvt.start_date);
+                        if (dayIdx < 0) return null;
+                        const own = gEvt.profile_id === currentUserId;
+                        const label = calTitle(gEvt.title, gEvt.profile_id);
+                        const baseStyle = { left: `calc(60px + ${dayIdx} * ((100% - 60px) / 7) + 2px)`, width: `calc((100% - 60px) / 7 - 4px)`, backgroundColor: own ? "#9E9E9E" : "#E0E0E0", color: own ? "#fff" : "#757575", ...(own ? {} : { backgroundImage: "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px)" }) };
+                        if (gEvt.all_day || !gEvt.start_time) {
+                          return <div key={`g-${gEvt.google_event_id}`} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: "0px", height: "20px", ...baseStyle }}><div className="truncate">{label}</div></div>;
+                        }
+                        const startMin = timeToMinutes(gEvt.start_time) - 7 * 60;
+                        const endMin = gEvt.end_time ? timeToMinutes(gEvt.end_time) - 7 * 60 : startMin + 60;
+                        return <div key={`g-${gEvt.google_event_id}`} className="absolute rounded px-1.5 py-0.5 text-xs overflow-hidden" style={{ top: `${(startMin / 60) * 64}px`, height: `${Math.max(((endMin - startMin) / 60) * 64, 20)}px`, ...baseStyle }}><div className="truncate">{label}</div></div>;
+                      })}
+                    </div>
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="grid grid-cols-7 border-b border-gray-100">
+                  {DAYS_FR.map((d) => <div key={d} className="p-2 text-center text-xs font-semibold text-gray-500 uppercase">{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7">
+                  {monthCells.map((day, i) => {
+                    if (!day) return <div key={`empty-${i}`} className="min-h-[100px] border-b border-r border-gray-50 bg-gray-50/30" />;
+                    const dateStr = fmt(day);
+                    const isToday = dateStr === fmt(new Date());
+                    const dayIvs = filteredInterventions.filter((iv) => iv.scheduled_date === dateStr);
+                    const dayCals = filteredCalEvents.filter((e) => e.start_date === dateStr);
+                    const dayGCals = filteredGoogleEvents.filter((e) => e.start_date === dateStr);
+                    return (
+                      <div key={dateStr} className={`min-h-[100px] border-b border-r border-gray-50 p-1 cursor-pointer hover:bg-gray-50/50 transition-colors ${isToday ? "bg-[#6366f1]/5" : ""}`} onClick={() => handleSlotClick(dateStr, "09:00")}>
+                        <div className={`text-xs font-medium mb-1 ${isToday ? "text-[#6366f1]" : "text-gray-500"}`}>{day.getDate()}</div>
+                        <div className="space-y-0.5">
+                          {dayIvs.slice(0, 3).map((iv) => (
+                            <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm" style={{ backgroundColor: getColor(iv.assigned_to, profiles), opacity: isOwn(iv.assigned_to) ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
+                              {iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}
+                            </div>
+                          ))}
+                          {dayCals.slice(0, 2).map((e) => <div key={e.id} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: isOwnCal(e.profile_id) ? "#9E9E9E" : "#E0E0E0", color: isOwnCal(e.profile_id) ? "#fff" : "#757575" }}>{calTitle(e.title, e.profile_id)}</div>)}
+                          {dayGCals.slice(0, 2).map((e) => <div key={`g-${e.google_event_id}`} className="text-[10px] rounded px-1 py-0.5 truncate" style={{ backgroundColor: e.profile_id === currentUserId ? "#9E9E9E" : "#E0E0E0", color: e.profile_id === currentUserId ? "#fff" : "#757575" }}>{calTitle(e.title, e.profile_id)}</div>)}
+                          {dayIvs.length > 3 && <div className="text-[10px] text-gray-400">+{dayIvs.length - 3} de plus</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
 
       {/* New RDV Modal */}
@@ -638,6 +954,23 @@ export default function PlanningPage() {
           onClose={() => setSelectedIntervention(null)}
           onUpdated={() => { setSelectedIntervention(null); fetchEvents(); }}
         />
+      )}
+
+      {/* Mobile FAB — admin only */}
+      {isAdmin && (
+        <button
+          onClick={() => { setPrefillDate(null); setPrefillTime(null); setShowNewModal(true); }}
+          className="md:hidden fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-[#6C63FF] hover:bg-[#818cf8] text-white shadow-lg active:scale-95 transition-transform flex items-center justify-center"
+        >
+          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+        </button>
+      )}
+
+      {/* Toast */}
+      {toastMsg && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 z-50 px-4 py-2.5 bg-gray-900 text-white text-sm rounded-lg shadow-lg animate-[fadeIn_0.2s_ease-out]">
+          {toastMsg}
+        </div>
       )}
     </div>
   );

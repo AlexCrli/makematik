@@ -29,7 +29,9 @@
       "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/app/factures/[id]\")",
       "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/quotes/[id]/pdf\")",
       "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/quotes/[id]/send-email\")",
-      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/invoices/[id]/pdf\")"
+      "Bash(mkdir -p \"C:/Users/alexc/Desktop/makematik/src/app/api/invoices/[id]/pdf\")",
+      "Bash(xargs ls:*)",
+      "Bash(ls -la /c/Users/alexc/Desktop/makematik/src/app/api/interventions*)"
     ]
   }
 }

@@ -96,7 +96,52 @@ export async function GET(request: Request) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([month, byCompany]) => ({ month, ...byCompany }));
 
-    // 5. Répartition par mode de paiement
+    // 5. Interventions par mois (completed)
+    let ivAllQuery = supabase
+      .from("interventions")
+      .select("id, scheduled_date, company_id")
+      .eq("organization_id", organizationId)
+      .eq("status", "completed");
+
+    if (dateStart) ivAllQuery = ivAllQuery.gte("scheduled_date", dateStart);
+    if (dateEnd) ivAllQuery = ivAllQuery.lte("scheduled_date", dateEnd);
+    if (companyId) ivAllQuery = ivAllQuery.eq("company_id", companyId);
+    const { data: ivAll } = await ivAllQuery;
+
+    const interventionsParMois: Record<string, number> = {};
+    for (const iv of ivAll ?? []) {
+      const month = iv.scheduled_date.slice(0, 7);
+      interventionsParMois[month] = (interventionsParMois[month] ?? 0) + 1;
+    }
+
+    const interventionsParMoisArr = Object.entries(interventionsParMois)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, count]) => ({ month, count }));
+
+    // 5b. CA par société (for table)
+    const caParSociete: Record<string, { ca: number; interventions: number; factures: number }> = {};
+    for (const inv of paidPeriod) {
+      const cid = inv.company_id ?? "other";
+      if (!caParSociete[cid]) caParSociete[cid] = { ca: 0, interventions: 0, factures: 0 };
+      caParSociete[cid].ca += inv.total_ttc ?? 0;
+      caParSociete[cid].factures += 1;
+    }
+    for (const iv of ivAll ?? []) {
+      const cid = iv.company_id ?? "other";
+      if (!caParSociete[cid]) caParSociete[cid] = { ca: 0, interventions: 0, factures: 0 };
+      caParSociete[cid].interventions += 1;
+    }
+
+    const caParSocieteArr = Object.entries(caParSociete).map(([cid, d]) => ({
+      company_id: cid,
+      company_name: companiesMap[cid] ?? "Autre",
+      ca_ttc: d.ca,
+      interventions: d.interventions,
+      factures: d.factures,
+      ticket_moyen: d.factures > 0 ? d.ca / d.factures : 0,
+    }));
+
+    // 6. Répartition par mode de paiement
     const repartition: Record<string, { amount: number; count: number }> = {};
     for (const inv of periodInvoices.filter((i) => i.status === "paid" || i.status === "pending")) {
       const method = inv.payment_method ?? "other";
@@ -159,6 +204,8 @@ export async function GET(request: Request) {
       pending_count: pendingCount,
       pending_amount: pendingAmount,
       ca_par_mois: caParMoisArr,
+      interventions_par_mois: interventionsParMoisArr,
+      ca_par_societe: caParSocieteArr,
       companies_map: companiesMap,
       repartition_paiement: repartitionArr,
       factures_differees: factureDiffereePending,
