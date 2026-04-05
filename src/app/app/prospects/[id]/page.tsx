@@ -128,12 +128,24 @@ function statusBadge(status: string) {
   );
 }
 
-function followUpIcon(action: string) {
+function followUpIcon(action: string, comment?: string | null) {
+  if (comment) {
+    if (comment.startsWith("RDV planifié") || comment.includes("RDV planifié")) return "📅";
+    if (comment.startsWith("Intervention effectuée")) return "✅";
+    if (action === "email" && /[Dd]evis.*envoyé/.test(comment)) return "📄";
+    if (action === "email" && /relance/i.test(comment)) return "📨";
+  }
   const t = FOLLOW_UP_TYPES.find((ft) => ft.key === action);
   return t?.icon ?? "📋";
 }
 
-function followUpLabel(action: string) {
+function followUpLabel(action: string, comment?: string | null) {
+  if (comment) {
+    if (comment.startsWith("RDV planifié") || comment.includes("RDV planifié")) return "Rendez-vous pris";
+    if (comment.startsWith("Intervention effectuée")) return "Intervention effectuée";
+    if (action === "email" && /[Dd]evis.*envoyé/.test(comment)) return "Devis envoyé";
+    if (action === "email" && /relance/i.test(comment)) return "Email de relance";
+  }
   const t = FOLLOW_UP_TYPES.find((ft) => ft.key === action);
   return t?.label ?? action;
 }
@@ -548,6 +560,16 @@ export default function ProspectDetailPage() {
         Retour aux prospects
       </button>
 
+      {/* ---- ALERTE FACTURE IMPAYÉE ---- */}
+      {clientInterventions.some((iv) => iv.invoice?.status === "pending") && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 flex items-center gap-2">
+          <svg className="w-5 h-5 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <span className="text-sm font-medium text-red-700">Ce client a une facture en attente de paiement</span>
+        </div>
+      )}
+
       {/* ---- EN-TÊTE ---- */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -694,10 +716,10 @@ export default function ProspectDetailPage() {
             <div className="space-y-3 max-h-[400px] overflow-y-auto">
               {followUps.map((fu) => (
                 <div key={fu.id} className="flex gap-3 p-3 rounded-lg bg-gray-50/80 border border-gray-100">
-                  <span className="text-xl shrink-0 mt-0.5">{followUpIcon(fu.action)}</span>
+                  <span className="text-xl shrink-0 mt-0.5">{followUpIcon(fu.action, fu.comment)}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium text-gray-900">{followUpLabel(fu.action)}</span>
+                      <span className="text-sm font-medium text-gray-900">{followUpLabel(fu.action, fu.comment)}</span>
                       <span className="text-xs text-gray-400">
                         {new Date(fu.performed_at).toLocaleDateString("fr-FR", {
                           day: "numeric",

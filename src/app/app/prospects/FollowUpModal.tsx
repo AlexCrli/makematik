@@ -75,12 +75,15 @@ export function NewFollowUpModal({
       }),
     });
 
-    // Auto-set status to "to_recall" (only advances, never regresses)
-    await fetch(`/api/clients/${clientId}`, {
-      method: "PUT",
-      headers: authHeaders(token),
-      body: JSON.stringify({ status: "to_recall" }),
-    });
+    // Only advance status to "to_recall" if current status is "new"
+    // Never regress: quote_sent, rdv_confirmed, client must stay
+    if (!clientStatus || clientStatus === "new") {
+      await fetch(`/api/clients/${clientId}`, {
+        method: "PUT",
+        headers: authHeaders(token),
+        body: JSON.stringify({ status: "to_recall" }),
+      });
+    }
   }
 
   async function handleSubmit() {

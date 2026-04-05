@@ -15,11 +15,13 @@ interface Client {
   first_name: string;
   last_name: string;
   phone: string | null;
+  email: string | null;
   city: string | null;
   status: string;
   nb_splits: number | null;
   next_contact_date: string | null;
   company_id: string | null;
+  has_pending_invoice?: boolean;
 }
 
 const STATUSES = [
@@ -563,7 +565,14 @@ export default function ProspectsPage() {
                   <td className="px-6 py-3.5 text-sm text-gray-600">{c.phone ?? "—"}</td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">{c.city ?? "—"}</td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">{companyName(c.company_id)}</td>
-                  <td className="px-6 py-3.5">{statusBadge(c.status)}</td>
+                  <td className="px-6 py-3.5">
+                    <div className="flex items-center gap-1.5">
+                      {statusBadge(c.status)}
+                      {c.has_pending_invoice && (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Facture impayée</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-3.5 text-sm text-gray-600">
                     {c.next_contact_date
                       ? new Date(c.next_contact_date).toLocaleDateString("fr-FR")
@@ -608,7 +617,12 @@ export default function ProspectsPage() {
                 <span className="font-medium text-gray-900 text-sm">
                   {c.first_name} {c.last_name}
                 </span>
-                {statusBadge(c.status)}
+                <div className="flex items-center gap-1.5">
+                  {statusBadge(c.status)}
+                  {c.has_pending_invoice && (
+                    <span className="inline-block px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">Impayée</span>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-4 text-xs text-gray-500">
                 {c.phone && <span>{c.phone}</span>}
@@ -651,6 +665,7 @@ export default function ProspectsPage() {
           clientId={followUpClientId}
           companyId={clients.find((c) => c.id === followUpClientId)?.company_id}
           clientStatus={clients.find((c) => c.id === followUpClientId)?.status}
+          clientEmail={clients.find((c) => c.id === followUpClientId)?.email}
           onClose={() => setFollowUpClientId(null)}
           onCreated={() => { setFollowUpClientId(null); fetchClients(); }}
         />

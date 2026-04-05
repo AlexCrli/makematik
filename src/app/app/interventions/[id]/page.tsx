@@ -161,6 +161,9 @@ export default function InterventionDetailPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [closing, setClosing] = useState(false);
 
+  // Client quotes for selector
+  const [clientQuotes, setClientQuotes] = useState<{ id: string; quote_number: string; total_ttc: number; status: string }[]>([]);
+
   // UI
   const [showNavChoice, setShowNavChoice] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
@@ -194,6 +197,22 @@ export default function InterventionDetailPage() {
       setLoading(false);
     })();
   }, [id]);
+
+  // Fetch client quotes for selector
+  useEffect(() => {
+    if (!intervention?.client?.id) return;
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        const res = await fetch(`/api/quotes?client_id=${intervention.client!.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        setClientQuotes(json.quotes ?? []);
+      } catch { setClientQuotes([]); }
+    })();
+  }, [intervention?.client?.id]);
 
   // Fetch quote lines
   const fetchLines = useCallback(async () => {
@@ -230,6 +249,32 @@ export default function InterventionDetailPage() {
     const json = await res.json();
     if (json.intervention) setIntervention((prev) => prev ? { ...prev, ...json.intervention } : prev);
     return true;
+  }
+
+  async function handleChangeQuote(newQuoteId: string | null) {
+    const ok = await updateIntervention({ quote_id: newQuoteId });
+    if (ok) {
+      // Refetch intervention to get updated quote data
+      const token = await getToken();
+      if (token) {
+        const res = await fetch(`/api/interventions/${id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const json = await res.json();
+          const iv = json.intervention as Intervention;
+          setIntervention(iv);
+          if (iv.quote) {
+            setQuoteTotals({
+              total_ht: iv.quote.total_ht ?? 0,
+              tva_rate: iv.quote.tva_rate ?? 20,
+              total_ttc: iv.quote.total_ttc ?? 0,
+              tax_credit_amount: iv.quote.tax_credit_amount ?? 0,
+            });
+          }
+        }
+      }
+    }
   }
 
   async function handleStart() {
@@ -307,6 +352,19 @@ export default function InterventionDetailPage() {
             } catch { /* email send failed silently */ }
           }
         }
+
+        // Record follow-up for intervention completion
+        const paymentLabel = paymentMethod ? (({ cash: "Espèces", check: "Chèque", card: "CB", deferred: "Facture différée" } as Record<string, string>)[paymentMethod] ?? paymentMethod) : "";
+        const amountStr = paymentAmount ? `${parseFloat(paymentAmount).toFixed(2).replace(".", ",")} €` : "—";
+        const dateStr = `${now.getDate().toString().padStart(2, "0")}/${(now.getMonth() + 1).toString().padStart(2, "0")}/${now.getFullYear()}`;
+        await fetch(`/api/clients/${intervention.client.id}/follow-ups`, {
+          method: "POST", headers: authHeaders(token),
+          body: JSON.stringify({
+            action: "call",
+            comment: `Intervention effectuée le ${dateStr} — ${amountStr} (${paymentLabel})`,
+            performed_at: new Date().toISOString(),
+          }),
+        });
 
         if (emailSent) {
           setToast({ message: "Intervention clôturée et facture envoyée par email", type: "success" });
@@ -557,9 +615,29 @@ export default function InterventionDetailPage() {
 
           {/* Quote lines editing */}
           <Card title="Devis">
+            {/* Quote selector when client has multiple quotes */}
+            {clientQuotes.length > 1 && (
+              <div className="mb-3">
+                <select
+                  className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-[#6366f1]/50 focus:ring-2 focus:ring-[#6366f1]/10"
+                  value={intervention.quote_id ?? ""}
+                  onChange={(e) => handleChangeQuote(e.target.value || null)}
+                >
+                  <option value="">Aucun devis</option>
+                  {clientQuotes.map((q) => {
+                    const statusLabel = q.status === "sent" ? "Envoyé" : q.status === "draft" ? "Brouillon" : q.status === "accepted" ? "Accepté" : q.status;
+                    return (
+                      <option key={q.id} value={q.id}>
+                        {q.quote_number} — {q.total_ttc.toFixed(2).replace(".", ",")} € — {statusLabel}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
             {intervention.quote_id ? (
               <>
-                {intervention.quote?.quote_number && (
+                {intervention.quote?.quote_number && clientQuotes.length <= 1 && (
                   <div className="flex items-center justify-between mb-3">
                     <Link href={`/app/devis/${intervention.quote.id}`} className="text-sm text-[#6366f1] font-medium">
                       {intervention.quote.quote_number}

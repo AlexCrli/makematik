@@ -169,6 +169,16 @@ export async function POST(
         .eq("id", quote.client_id);
     }
 
+    // Record in follow_ups history
+    await supabase.from("follow_ups").insert([{
+      client_id: quote.client_id,
+      organization_id: organizationId,
+      action: "email",
+      comment: `Devis ${quote.quote_number} envoyé par email`,
+      performed_by: user.id,
+      performed_at: sentAt,
+    }]);
+
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error, quote_marked_sent: true }, { status: 400 });
     }

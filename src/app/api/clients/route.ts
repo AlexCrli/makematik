@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
     let query = supabase
       .from("clients")
-      .select("id, first_name, last_name, phone, city, status, nb_splits, next_contact_date, company_id")
+      .select("id, first_name, last_name, email, phone, city, status, nb_splits, next_contact_date, company_id")
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
 
@@ -64,7 +64,25 @@ export async function GET(request: Request) {
       return NextResponse.json({ clients: [] });
     }
 
-    return NextResponse.json({ clients: data });
+    // Batch check for pending invoices to add has_pending_invoice flag
+    const clientIds = (data ?? []).filter((c) => c.status === "client").map((c) => c.id);
+    let pendingInvoiceClientIds = new Set<string>();
+    if (clientIds.length > 0) {
+      const { data: pendingInvoices } = await supabase
+        .from("invoices")
+        .select("client_id")
+        .eq("organization_id", organizationId)
+        .eq("status", "pending")
+        .in("client_id", clientIds);
+      pendingInvoiceClientIds = new Set((pendingInvoices ?? []).map((i) => i.client_id));
+    }
+
+    const clients = (data ?? []).map((c) => ({
+      ...c,
+      has_pending_invoice: pendingInvoiceClientIds.has(c.id),
+    }));
+
+    return NextResponse.json({ clients });
   } catch (err) {
     console.error("[api/clients GET] Unexpected:", err);
     return NextResponse.json({ clients: [] });

@@ -172,7 +172,7 @@ export async function PUT(
     const allowed = [
       "assigned_to", "scheduled_date", "scheduled_time",
       "duration_minutes", "status", "field_notes",
-      "payment_method", "payment_amount", "completed_at",
+      "payment_method", "payment_amount", "completed_at", "quote_id",
     ];
     for (const key of allowed) {
       if (key in body) updates[key] = body[key];
