@@ -79,6 +79,7 @@ function NewProspectModal({
 
   // Step 1
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [civility, setCivility] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -104,6 +105,7 @@ function NewProspectModal({
     setSending(true);
     const payload = {
       company_id: selectedCompanyId || null,
+      civility: civility || null,
       first_name: firstName,
       last_name: lastName,
       email: email || null,
@@ -200,6 +202,14 @@ function NewProspectModal({
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Civilité</label>
+                <select className={inputCls} value={civility} onChange={(e) => setCivility(e.target.value)}>
+                  <option value="">—</option>
+                  <option value="M.">M.</option>
+                  <option value="Mme">Mme</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-4">

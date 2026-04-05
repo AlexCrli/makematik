@@ -25,6 +25,10 @@ interface Company {
   bank_account_name: string | null;
   gmail_connected: boolean;
   gmail_email: string | null;
+  email_subject_quote: string | null;
+  email_template_quote: string | null;
+  email_subject_invoice: string | null;
+  email_template_invoice: string | null;
 }
 
 async function getToken() {
@@ -58,6 +62,8 @@ export default function CompanyEditPage() {
     legal_entity_name: "", address: "", postal_code: "", city: "",
     phone: "", email: "", siret: "", tva_mention: "", legal_mentions: "",
     iban: "", bank_account_name: "", logo_url: "",
+    email_subject_quote: "", email_template_quote: "",
+    email_subject_invoice: "", email_template_invoice: "",
   });
 
   const fetchCompany = useCallback(async () => {
@@ -86,6 +92,10 @@ export default function CompanyEditPage() {
         iban: c.iban ?? "",
         bank_account_name: c.bank_account_name ?? "",
         logo_url: c.logo_url ?? "",
+        email_subject_quote: c.email_subject_quote ?? "",
+        email_template_quote: c.email_template_quote ?? "",
+        email_subject_invoice: c.email_subject_invoice ?? "",
+        email_template_invoice: c.email_template_invoice ?? "",
       });
     } catch { setError("Erreur de chargement"); }
     setLoading(false);
@@ -275,6 +285,40 @@ export default function CompanyEditPage() {
             <div>
               <label className={labelCls}>Titulaire du compte</label>
               <input className={inputCls} value={form.bank_account_name} onChange={(e) => updateForm("bank_account_name", e.target.value)} />
+            </div>
+          </div>
+        </Section>
+
+        {/* ── Templates email ── */}
+        <Section title="Templates email">
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Email devis</h4>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Sujet</label>
+                  <input className={inputCls} value={form.email_subject_quote} onChange={(e) => updateForm("email_subject_quote", e.target.value)} placeholder="Devis nettoyage climatisation - ..." />
+                </div>
+                <div>
+                  <label className={labelCls}>Corps du message</label>
+                  <textarea className={`${inputCls} resize-none`} rows={8} value={form.email_template_quote} onChange={(e) => updateForm("email_template_quote", e.target.value)} placeholder="Bonjour [civilite] [nom],&#10;&#10;Veuillez trouver ci-joint..." />
+                  <p className="text-xs text-gray-400 mt-1">Placeholders disponibles : [civilite] [nom]</p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 pt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Email facture</h4>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Sujet</label>
+                  <input className={inputCls} value={form.email_subject_invoice} onChange={(e) => updateForm("email_subject_invoice", e.target.value)} placeholder="Facture nettoyage climatisation - ..." />
+                </div>
+                <div>
+                  <label className={labelCls}>Corps du message</label>
+                  <textarea className={`${inputCls} resize-none`} rows={8} value={form.email_template_invoice} onChange={(e) => updateForm("email_template_invoice", e.target.value)} placeholder="Bonjour [civilite] [nom],&#10;&#10;Veuillez trouver ci-joint..." />
+                  <p className="text-xs text-gray-400 mt-1">Placeholders disponibles : [civilite] [nom]</p>
+                </div>
+              </div>
             </div>
           </div>
         </Section>

@@ -102,6 +102,7 @@ export async function POST(request: Request) {
       last_maintenance: body.last_maintenance || null,
       source: body.source || null,
       notes: body.notes || null,
+      civility: body.civility || null,
     };
 
     console.log("[api/clients POST] Inserting:", JSON.stringify(row));

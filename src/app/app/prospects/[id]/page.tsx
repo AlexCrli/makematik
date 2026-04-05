@@ -15,6 +15,7 @@ interface ClientDetail {
   id: string;
   company_id: string | null;
   company_name: string | null;
+  civility: string | null;
   first_name: string;
   last_name: string;
   email: string | null;
@@ -188,6 +189,7 @@ function EditModal({
 }) {
   const [saving, setSaving] = useState(false);
   const [companyId, setCompanyId] = useState(client.company_id ?? "");
+  const [civility, setCivility] = useState(client.civility ?? "");
   const [firstName, setFirstName] = useState(client.first_name);
   const [lastName, setLastName] = useState(client.last_name);
   const [email, setEmail] = useState(client.email ?? "");
@@ -216,6 +218,7 @@ function EditModal({
         headers: authHeaders(token),
         body: JSON.stringify({
           company_id: companyId || null,
+          civility: civility || null,
           first_name: firstName,
           last_name: lastName,
           email: email || null,
@@ -273,6 +276,14 @@ function EditModal({
           </div>
 
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Coordonnées</h3>
+          <div>
+            <label className={labelCls}>Civilité</label>
+            <select className={inputCls} value={civility} onChange={(e) => setCivility(e.target.value)}>
+              <option value="">—</option>
+              <option value="M.">M.</option>
+              <option value="Mme">Mme</option>
+            </select>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Prénom *</label>
@@ -543,7 +554,7 @@ export default function ProspectDetailPage() {
           <div className="space-y-2">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900">
-                {client.first_name} {client.last_name}
+                {client.civility ? `${client.civility} ` : ""}{client.first_name} {client.last_name}
               </h1>
               {client.company_name && (
                 <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">

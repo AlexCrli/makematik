@@ -53,11 +53,11 @@ export async function POST(
       .from("invoice_lines").select("*").eq("invoice_id", invoice.id).order("created_at", { ascending: true });
 
     const { data: client } = await supabase
-      .from("clients").select("first_name, last_name, email, phone, address, postal_code, city").eq("id", invoice.client_id).single();
+      .from("clients").select("first_name, last_name, email, phone, address, postal_code, city, civility").eq("id", invoice.client_id).single();
 
     const { data: company } = await supabase
       .from("companies")
-      .select("id, name, address, postal_code, city, phone, email, siret, iban, bank_account_name, legal_entity_name, legal_mentions, tva_mention, logo_url, color, gmail_connected")
+      .select("id, name, address, postal_code, city, phone, email, siret, iban, bank_account_name, legal_entity_name, legal_mentions, tva_mention, logo_url, color, gmail_connected, email_subject_invoice, email_template_invoice")
       .eq("id", invoice.company_id)
       .single();
 
@@ -101,37 +101,63 @@ export async function POST(
 
     // Build email HTML
     const companyName = company.name ?? "Makematik";
-    const clientName = `${client.first_name} ${client.last_name}`;
-    const subject = `Facture N\u00B0 ${invoice.invoice_number} - ${companyName}`;
+    const civility = client.civility ?? "";
+    const clientLastName = client.last_name;
 
-    let statusLine = "";
-    if (invoice.status === "paid") {
-      statusLine = `<p style="color: #059669; font-weight: bold;">Cette facture est r\u00E9gl\u00E9e. Merci !</p>`;
-    } else if (invoice.payment_due_date) {
-      statusLine = `<p>\u00C9ch\u00E9ance de paiement : <strong>${fmtDate(invoice.payment_due_date)}</strong></p>`;
+    let subject: string;
+    let htmlBody: string;
+
+    if (company.email_template_invoice) {
+      // Custom template from company settings
+      subject = company.email_subject_invoice ?? `Facture N° ${invoice.invoice_number} - ${companyName}`;
+      const bodyText = company.email_template_invoice
+        .replace(/\[civilite\]/g, civility)
+        .replace(/\[nom\]/g, clientLastName);
+      const bodyHtml = bodyText.replace(/\n/g, "<br>");
+      htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+          <div style="background: ${company.color ?? "#6366f1"}; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">${companyName}</h1>
+          </div>
+          <div style="padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+            <p style="white-space: pre-line;">${bodyHtml}</p>
+          </div>
+        </div>
+      `;
+    } else {
+      // Default generic template
+      const clientName = `${client.first_name} ${client.last_name}`;
+      subject = `Facture N° ${invoice.invoice_number} - ${companyName}`;
+
+      let statusLine = "";
+      if (invoice.status === "paid") {
+        statusLine = `<p style="color: #059669; font-weight: bold;">Cette facture est réglée. Merci !</p>`;
+      } else if (invoice.payment_due_date) {
+        statusLine = `<p>Échéance de paiement : <strong>${fmtDate(invoice.payment_due_date)}</strong></p>`;
+      }
+
+      htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+          <div style="background: ${company.color ?? "#6366f1"}; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">${companyName}</h1>
+          </div>
+          <div style="padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+            <p>Bonjour ${clientName},</p>
+            <p>Veuillez trouver ci-joint votre facture <strong>N° ${invoice.invoice_number}</strong>.</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+              <tr>
+                <td style="padding: 8px 0; color: #6b7280;">Montant TTC</td>
+                <td style="padding: 8px 0; text-align: right; font-weight: bold;">${fmtEur(invoice.total_ttc)}</td>
+              </tr>
+            </table>
+            ${statusLine}
+            <p>N'hésitez pas à nous contacter pour toute question.</p>
+            <p style="margin-top: 24px;">Cordialement,<br/><strong>${companyName}</strong></p>
+            ${company.phone ? `<p style="color: #6b7280; font-size: 13px;">${company.phone}</p>` : ""}
+          </div>
+        </div>
+      `;
     }
-
-    const htmlBody = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-        <div style="background: ${company.color ?? "#6366f1"}; padding: 20px 24px; border-radius: 8px 8px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 20px;">${companyName}</h1>
-        </div>
-        <div style="padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-          <p>Bonjour ${clientName},</p>
-          <p>Veuillez trouver ci-joint votre facture <strong>N\u00B0 ${invoice.invoice_number}</strong>.</p>
-          <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280;">Montant TTC</td>
-              <td style="padding: 8px 0; text-align: right; font-weight: bold;">${fmtEur(invoice.total_ttc)}</td>
-            </tr>
-          </table>
-          ${statusLine}
-          <p>N'h\u00E9sitez pas \u00E0 nous contacter pour toute question.</p>
-          <p style="margin-top: 24px;">Cordialement,<br/><strong>${companyName}</strong></p>
-          ${company.phone ? `<p style="color: #6b7280; font-size: 13px;">${company.phone}</p>` : ""}
-        </div>
-      </div>
-    `;
 
     // Send via Gmail
     const result = await sendEmailWithAttachment(

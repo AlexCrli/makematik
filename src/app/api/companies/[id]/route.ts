@@ -75,6 +75,8 @@ export async function PUT(
       "legal_entity_name", "address", "postal_code", "city", "phone", "email",
       "siret", "tva_mention", "legal_mentions",
       "iban", "bank_account_name",
+      "email_subject_quote", "email_template_quote",
+      "email_subject_invoice", "email_template_invoice",
     ];
     const updates: Record<string, unknown> = {};
     for (const key of allowed) {

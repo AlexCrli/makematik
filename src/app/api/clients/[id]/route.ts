@@ -109,7 +109,7 @@ export async function PUT(
       "address", "postal_code", "city", "company_id",
       "nb_splits", "gainable", "nb_groups_ext", "height_group",
       "difficult_access", "has_elevator",
-      "last_maintenance", "source", "notes",
+      "last_maintenance", "source", "notes", "civility",
       "status", "next_contact_date",
     ];
 

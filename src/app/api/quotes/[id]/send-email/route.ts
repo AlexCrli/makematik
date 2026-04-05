@@ -50,11 +50,11 @@ export async function POST(
       .from("quote_lines").select("*").eq("quote_id", quote.id).order("created_at", { ascending: true });
 
     const { data: client } = await supabase
-      .from("clients").select("first_name, last_name, email, phone, address, postal_code, city, status").eq("id", quote.client_id).single();
+      .from("clients").select("first_name, last_name, email, phone, address, postal_code, city, status, civility").eq("id", quote.client_id).single();
 
     const { data: company } = await supabase
       .from("companies")
-      .select("id, name, address, postal_code, city, phone, email, siret, iban, bank_account_name, legal_entity_name, legal_mentions, tva_mention, logo_url, color, gmail_connected")
+      .select("id, name, address, postal_code, city, phone, email, siret, iban, bank_account_name, legal_entity_name, legal_mentions, tva_mention, logo_url, color, gmail_connected, email_subject_quote, email_template_quote")
       .eq("id", quote.company_id)
       .single();
 
@@ -83,37 +83,63 @@ export async function POST(
 
     // Build email HTML
     const companyName = company.name ?? "Makematik";
-    const clientName = `${client.first_name} ${client.last_name}`;
-    const subject = `Devis N\u00B0 ${quote.quote_number} - ${companyName}`;
-    const htmlBody = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
-        <div style="background: ${company.color ?? "#6366f1"}; padding: 20px 24px; border-radius: 8px 8px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 20px;">${companyName}</h1>
+    const civility = client.civility ?? "";
+    const clientLastName = client.last_name;
+
+    let subject: string;
+    let htmlBody: string;
+
+    if (company.email_template_quote) {
+      // Custom template from company settings
+      subject = company.email_subject_quote ?? `Devis N° ${quote.quote_number} - ${companyName}`;
+      const bodyText = company.email_template_quote
+        .replace(/\[civilite\]/g, civility)
+        .replace(/\[nom\]/g, clientLastName);
+      const bodyHtml = bodyText.replace(/\n/g, "<br>");
+      htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+          <div style="background: ${company.color ?? "#6366f1"}; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">${companyName}</h1>
+          </div>
+          <div style="padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+            <p style="white-space: pre-line;">${bodyHtml}</p>
+          </div>
         </div>
-        <div style="padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
-          <p>Bonjour ${clientName},</p>
-          <p>Veuillez trouver ci-joint votre devis <strong>N\u00B0 ${quote.quote_number}</strong>.</p>
-          <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280;">Montant TTC</td>
-              <td style="padding: 8px 0; text-align: right; font-weight: bold;">${fmtEur(quote.total_ttc)}</td>
-            </tr>
-            ${quote.tax_credit_amount > 0 ? `
-            <tr>
-              <td style="padding: 8px 0; color: #059669;">Cr\u00E9dit d'imp\u00F4t 50%</td>
-              <td style="padding: 8px 0; text-align: right; color: #059669;">- ${fmtEur(quote.tax_credit_amount)}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #6b7280;">Co\u00FBt r\u00E9el</td>
-              <td style="padding: 8px 0; text-align: right; font-weight: bold;">${fmtEur(quote.total_ttc - quote.tax_credit_amount)}</td>
-            </tr>` : ""}
-          </table>
-          <p>N'h\u00E9sitez pas \u00E0 nous contacter pour toute question.</p>
-          <p style="margin-top: 24px;">Cordialement,<br/><strong>${companyName}</strong></p>
-          ${company.phone ? `<p style="color: #6b7280; font-size: 13px;">${company.phone}</p>` : ""}
+      `;
+    } else {
+      // Default generic template
+      const clientName = `${client.first_name} ${client.last_name}`;
+      subject = `Devis N° ${quote.quote_number} - ${companyName}`;
+      htmlBody = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;">
+          <div style="background: ${company.color ?? "#6366f1"}; padding: 20px 24px; border-radius: 8px 8px 0 0;">
+            <h1 style="color: white; margin: 0; font-size: 20px;">${companyName}</h1>
+          </div>
+          <div style="padding: 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+            <p>Bonjour ${clientName},</p>
+            <p>Veuillez trouver ci-joint votre devis <strong>N° ${quote.quote_number}</strong>.</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+              <tr>
+                <td style="padding: 8px 0; color: #6b7280;">Montant TTC</td>
+                <td style="padding: 8px 0; text-align: right; font-weight: bold;">${fmtEur(quote.total_ttc)}</td>
+              </tr>
+              ${quote.tax_credit_amount > 0 ? `
+              <tr>
+                <td style="padding: 8px 0; color: #059669;">Crédit d'impôt 50%</td>
+                <td style="padding: 8px 0; text-align: right; color: #059669;">- ${fmtEur(quote.tax_credit_amount)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #6b7280;">Coût réel</td>
+                <td style="padding: 8px 0; text-align: right; font-weight: bold;">${fmtEur(quote.total_ttc - quote.tax_credit_amount)}</td>
+              </tr>` : ""}
+            </table>
+            <p>N'hésitez pas à nous contacter pour toute question.</p>
+            <p style="margin-top: 24px;">Cordialement,<br/><strong>${companyName}</strong></p>
+            ${company.phone ? `<p style="color: #6b7280; font-size: 13px;">${company.phone}</p>` : ""}
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
 
     // Send via Gmail
     const result = await sendEmailWithAttachment(
