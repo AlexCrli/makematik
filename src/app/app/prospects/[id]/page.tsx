@@ -839,6 +839,8 @@ export default function ProspectDetailPage() {
         <NewFollowUpModal
           clientId={client.id}
           companyId={client.company_id}
+          clientStatus={client.status}
+          clientEmail={client.email}
           onClose={() => setShowFollowUp(false)}
           onCreated={() => { fetchClient(); fetchFollowUps(); }}
         />

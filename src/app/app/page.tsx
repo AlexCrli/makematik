@@ -29,7 +29,11 @@ interface RelanceClient {
   city: string | null;
   status: string;
   next_contact_date: string | null;
+  company_id: string | null;
   company_name: string;
+  email: string | null;
+  relance_reason: string;
+  relance_days: number;
 }
 
 interface UpcomingIntervention {
@@ -73,6 +77,31 @@ function statusBadge(status: string) {
       {s.label}
     </span>
   );
+}
+
+function relanceBadge(reason: string, days: number) {
+  switch (reason) {
+    case "new":
+      return <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">Nouveau</span>;
+    case "to_recall":
+      return <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">À rappeler</span>;
+    case "quote":
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+          Devis en attente
+          {days > 0 && <span className="text-purple-500">· {days}j</span>}
+        </span>
+      );
+    case "invoice":
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+          Facture impayée
+          {days > 0 && <span className="text-red-500">· {days}j</span>}
+        </span>
+      );
+    default:
+      return statusBadge(reason);
+  }
 }
 
 function fmtEur(n: number): string {
@@ -274,7 +303,7 @@ export default function DashboardPage() {
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Téléphone</th>
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Ville</th>
                     <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Société</th>
-                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Statut</th>
+                    <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Raison</th>
                     <th className="text-right text-xs font-semibold text-gray-500 uppercase tracking-wider px-6 py-3">Actions</th>
                   </tr>
                 </thead>
@@ -291,7 +320,7 @@ export default function DashboardPage() {
                       <td className="px-6 py-3.5 text-sm text-gray-600">{c.phone ?? "—"}</td>
                       <td className="px-6 py-3.5 text-sm text-gray-600">{c.city ?? "—"}</td>
                       <td className="px-6 py-3.5 text-sm text-gray-600">{c.company_name}</td>
-                      <td className="px-6 py-3.5">{statusBadge(c.status)}</td>
+                      <td className="px-6 py-3.5">{relanceBadge(c.relance_reason, c.relance_days)}</td>
                       <td className="px-6 py-3.5 text-right">
                         <button
                           onClick={(e) => {
@@ -320,7 +349,7 @@ export default function DashboardPage() {
                       <span className="font-medium text-gray-900 text-sm">
                         {c.first_name} {c.last_name}
                       </span>
-                      {statusBadge(c.status)}
+                      {relanceBadge(c.relance_reason, c.relance_days)}
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">
@@ -444,6 +473,9 @@ export default function DashboardPage() {
       {followUpClientId && (
         <NewFollowUpModal
           clientId={followUpClientId}
+          companyId={relances.find((r) => r.id === followUpClientId)?.company_id}
+          clientStatus={relances.find((r) => r.id === followUpClientId)?.status}
+          clientEmail={relances.find((r) => r.id === followUpClientId)?.email}
           onClose={() => setFollowUpClientId(null)}
           onCreated={() => { setFollowUpClientId(null); fetchData(); }}
         />

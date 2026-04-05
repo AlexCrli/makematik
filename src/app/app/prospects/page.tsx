@@ -650,6 +650,7 @@ export default function ProspectsPage() {
         <NewFollowUpModal
           clientId={followUpClientId}
           companyId={clients.find((c) => c.id === followUpClientId)?.company_id}
+          clientStatus={clients.find((c) => c.id === followUpClientId)?.status}
           onClose={() => setFollowUpClientId(null)}
           onCreated={() => { setFollowUpClientId(null); fetchClients(); }}
         />

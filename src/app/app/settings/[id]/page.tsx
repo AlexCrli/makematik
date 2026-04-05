@@ -29,6 +29,14 @@ interface Company {
   email_template_quote: string | null;
   email_subject_invoice: string | null;
   email_template_invoice: string | null;
+  email_subject_followup_prospect: string | null;
+  email_template_followup_prospect: string | null;
+  email_subject_followup_quote: string | null;
+  email_template_followup_quote: string | null;
+  email_subject_followup_invoice: string | null;
+  email_template_followup_invoice: string | null;
+  followup_quote_days: number | null;
+  followup_invoice_days: number | null;
 }
 
 async function getToken() {
@@ -64,6 +72,10 @@ export default function CompanyEditPage() {
     iban: "", bank_account_name: "", logo_url: "",
     email_subject_quote: "", email_template_quote: "",
     email_subject_invoice: "", email_template_invoice: "",
+    email_subject_followup_prospect: "", email_template_followup_prospect: "",
+    email_subject_followup_quote: "", email_template_followup_quote: "",
+    email_subject_followup_invoice: "", email_template_followup_invoice: "",
+    followup_quote_days: 7, followup_invoice_days: 30,
   });
 
   const fetchCompany = useCallback(async () => {
@@ -96,6 +108,14 @@ export default function CompanyEditPage() {
         email_template_quote: c.email_template_quote ?? "",
         email_subject_invoice: c.email_subject_invoice ?? "",
         email_template_invoice: c.email_template_invoice ?? "",
+        email_subject_followup_prospect: c.email_subject_followup_prospect ?? "",
+        email_template_followup_prospect: c.email_template_followup_prospect ?? "",
+        email_subject_followup_quote: c.email_subject_followup_quote ?? "",
+        email_template_followup_quote: c.email_template_followup_quote ?? "",
+        email_subject_followup_invoice: c.email_subject_followup_invoice ?? "",
+        email_template_followup_invoice: c.email_template_followup_invoice ?? "",
+        followup_quote_days: c.followup_quote_days ?? 7,
+        followup_invoice_days: c.followup_invoice_days ?? 30,
       });
     } catch { setError("Erreur de chargement"); }
     setLoading(false);
@@ -106,7 +126,7 @@ export default function CompanyEditPage() {
     fetchCompany();
   }, [role, router, fetchCompany]);
 
-  function updateForm(key: string, value: string | boolean) {
+  function updateForm(key: string, value: string | boolean | number) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -317,6 +337,70 @@ export default function CompanyEditPage() {
                   <label className={labelCls}>Corps du message</label>
                   <textarea className={`${inputCls} resize-none`} rows={8} value={form.email_template_invoice} onChange={(e) => updateForm("email_template_invoice", e.target.value)} placeholder="Bonjour [civilite] [nom],&#10;&#10;Veuillez trouver ci-joint..." />
                   <p className="text-xs text-gray-400 mt-1">Placeholders disponibles : [civilite] [nom]</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* ── Templates relance ── */}
+        <Section title="Templates relance">
+          <div className="space-y-6">
+            <div>
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Relance prospection</h4>
+              <p className="text-xs text-gray-400 mb-2">Pour les prospects nouveaux et à rappeler</p>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Sujet</label>
+                  <input className={inputCls} value={form.email_subject_followup_prospect} onChange={(e) => updateForm("email_subject_followup_prospect", e.target.value)} placeholder="Nettoyage climatisation - ..." />
+                </div>
+                <div>
+                  <label className={labelCls}>Corps du message</label>
+                  <textarea className={`${inputCls} resize-none`} rows={8} value={form.email_template_followup_prospect} onChange={(e) => updateForm("email_template_followup_prospect", e.target.value)} placeholder="Bonjour [civilite] [nom],&#10;&#10;Suite à notre échange..." />
+                  <p className="text-xs text-gray-400 mt-1">Placeholders : [civilite] [nom]</p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 pt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Relance devis</h4>
+              <p className="text-xs text-gray-400 mb-2">Pour les prospects avec devis envoyé</p>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Sujet</label>
+                  <input className={inputCls} value={form.email_subject_followup_quote} onChange={(e) => updateForm("email_subject_followup_quote", e.target.value)} placeholder="Votre devis nettoyage climatisation - ..." />
+                </div>
+                <div>
+                  <label className={labelCls}>Corps du message</label>
+                  <textarea className={`${inputCls} resize-none`} rows={8} value={form.email_template_followup_quote} onChange={(e) => updateForm("email_template_followup_quote", e.target.value)} placeholder="Bonjour [civilite] [nom],&#10;&#10;Je me permets de revenir vers vous..." />
+                  <p className="text-xs text-gray-400 mt-1">Placeholders : [civilite] [nom]. Le dernier devis est automatiquement joint en PJ.</p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 pt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Relance facture</h4>
+              <p className="text-xs text-gray-400 mb-2">Pour les factures impayées</p>
+              <div className="space-y-3">
+                <div>
+                  <label className={labelCls}>Sujet</label>
+                  <input className={inputCls} value={form.email_subject_followup_invoice} onChange={(e) => updateForm("email_subject_followup_invoice", e.target.value)} placeholder="Rappel de paiement - Facture ..." />
+                </div>
+                <div>
+                  <label className={labelCls}>Corps du message</label>
+                  <textarea className={`${inputCls} resize-none`} rows={8} value={form.email_template_followup_invoice} onChange={(e) => updateForm("email_template_followup_invoice", e.target.value)} placeholder="Bonjour [civilite] [nom],&#10;&#10;Je me permets de vous relancer..." />
+                  <p className="text-xs text-gray-400 mt-1">Placeholders : [civilite] [nom] [numero_facture] [montant_ttc] [date_echeance] [titulaire_compte] [iban]</p>
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 pt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Délais de relance automatique</h4>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Relancer après X jours (devis envoyé)</label>
+                  <input className={inputCls} type="number" min="1" value={form.followup_quote_days} onChange={(e) => updateForm("followup_quote_days", parseInt(e.target.value) || 7)} />
+                </div>
+                <div>
+                  <label className={labelCls}>Relancer après X jours (facture impayée)</label>
+                  <input className={inputCls} type="number" min="1" value={form.followup_invoice_days} onChange={(e) => updateForm("followup_invoice_days", parseInt(e.target.value) || 30)} />
                 </div>
               </div>
             </div>

@@ -35,65 +35,117 @@ const btnCls = "px-4 py-2 text-sm font-medium rounded-lg transition-colors";
 export function NewFollowUpModal({
   clientId,
   companyId,
+  clientStatus,
+  clientEmail,
   onClose,
   onCreated,
 }: {
   clientId: string;
   companyId?: string | null;
+  clientStatus?: string | null;
+  clientEmail?: string | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const [sending, setSending] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
   const [action, setAction] = useState("call");
   const [comment, setComment] = useState("");
   const [nextDate, setNextDate] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Determine followup_type based on client status
+  function getFollowupType(): "prospect" | "quote" | "invoice" | null {
+    if (!clientStatus) return "prospect";
+    if (clientStatus === "new" || clientStatus === "to_recall") return "prospect";
+    if (clientStatus === "quote_sent") return "quote";
+    if (clientStatus === "client") return "invoice";
+    return null;
+  }
+
+  async function createFollowUp(token: string, actionType: string, commentText: string) {
+    await fetch(`/api/clients/${clientId}/follow-ups`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({
+        action: actionType,
+        comment: commentText || null,
+        performed_at: new Date().toISOString(),
+        next_contact_date: nextDate || null,
+      }),
+    });
+
+    // Auto-set status to "to_recall" (only advances, never regresses)
+    await fetch(`/api/clients/${clientId}`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify({ status: "to_recall" }),
+    });
+  }
 
   async function handleSubmit() {
     setSending(true);
     const token = await getToken();
     if (!token) {
-      console.error("[follow-up] No auth token");
       setSending(false);
       return;
     }
 
     try {
-      // 1. Create follow-up
-      const res = await fetch(`/api/clients/${clientId}/follow-ups`, {
-        method: "POST",
-        headers: authHeaders(token),
-        body: JSON.stringify({
-          action,
-          comment: comment || null,
-          performed_at: new Date().toISOString(),
-          next_contact_date: nextDate || null,
-        }),
-      });
-      const json = await res.json();
-      console.log("[follow-up] POST response:", res.status, json);
-
-      if (!res.ok) {
-        console.error("[follow-up] POST failed:", json);
-        setSending(false);
-        return;
-      }
-
-      // 2. Auto-set status to "to_recall"
-      const putRes = await fetch(`/api/clients/${clientId}`, {
-        method: "PUT",
-        headers: authHeaders(token),
-        body: JSON.stringify({ status: "to_recall" }),
-      });
-      const putJson = await putRes.json();
-      console.log("[follow-up] PUT status response:", putRes.status, putJson);
-
-      // 3. Close modal and refresh
+      await createFollowUp(token, action, comment);
       onCreated();
       onClose();
     } catch (err) {
       console.error("[follow-up] Error:", err);
     }
     setSending(false);
+  }
+
+  async function handleSendEmail() {
+    setSendingEmail(true);
+    const token = await getToken();
+    if (!token) {
+      setSendingEmail(false);
+      return;
+    }
+
+    const followupType = getFollowupType();
+    if (!followupType) {
+      setSendingEmail(false);
+      return;
+    }
+
+    try {
+      // 1. Send the email via API
+      const emailRes = await fetch("/api/followups/send-email", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          client_id: clientId,
+          followup_type: followupType,
+        }),
+      });
+      const emailJson = await emailRes.json();
+
+      if (emailRes.ok && emailJson.success) {
+        // 2. Record follow-up
+        await createFollowUp(token, "email", emailJson.message ?? "Email de relance envoyé");
+
+        setToast({ message: "Email de relance envoyé", type: "success" });
+        setTimeout(() => {
+          onCreated();
+          onClose();
+        }, 1200);
+      } else {
+        setToast({ message: emailJson.error ?? "Erreur lors de l'envoi", type: "error" });
+        setTimeout(() => setToast(null), 3000);
+      }
+    } catch (err) {
+      console.error("[follow-up] Email error:", err);
+      setToast({ message: "Erreur réseau", type: "error" });
+      setTimeout(() => setToast(null), 3000);
+    }
+    setSendingEmail(false);
   }
 
   const inputCls =
@@ -107,10 +159,15 @@ export function NewFollowUpModal({
     { label: "Dans 2 semaines", days: 14 },
   ];
 
+  const followupType = getFollowupType();
+  const canSendEmail = action === "email" && followupType !== null;
+  const hasEmail = !!clientEmail;
+  const gmailWarning = !companyId ? "Pas de société rattachée" : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Nouvelle relance</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
@@ -140,6 +197,32 @@ export function NewFollowUpModal({
               ))}
             </div>
           </div>
+
+          {/* Email send button — only when "Email" type is selected */}
+          {canSendEmail && (
+            <div className="p-3 rounded-lg bg-[#6366f1]/5 border border-[#6366f1]/20">
+              <div className="relative group">
+                <button
+                  onClick={handleSendEmail}
+                  disabled={sendingEmail || !hasEmail || !!gmailWarning}
+                  className="w-full py-2.5 bg-[#6366f1] hover:bg-[#818cf8] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {sendingEmail ? "Envoi en cours..." : "Envoyer le mail de relance"}
+                </button>
+                {!hasEmail && (
+                  <p className="text-xs text-red-500 mt-1.5 text-center">Le prospect n&apos;a pas d&apos;adresse email</p>
+                )}
+                {gmailWarning && hasEmail && (
+                  <p className="text-xs text-orange-500 mt-1.5 text-center">{gmailWarning}</p>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                {followupType === "prospect" && "Envoie le template de relance prospection"}
+                {followupType === "quote" && "Envoie le template de relance devis + PDF en PJ"}
+                {followupType === "invoice" && "Envoie le template de relance facture + PDF en PJ"}
+              </p>
+            </div>
+          )}
 
           <div>
             <label className={labelCls}>Notes / contenu</label>
@@ -178,7 +261,7 @@ export function NewFollowUpModal({
             <p className="text-xs text-gray-400 mt-1">Met à jour la date de prochaine relance du prospect</p>
           </div>
 
-          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100 flex-wrap">
             <button
               onClick={onClose}
               className={`${btnCls} text-gray-600 hover:text-gray-800 border border-gray-200 hover:bg-gray-50`}
@@ -206,6 +289,13 @@ export function NewFollowUpModal({
             </button>
           </div>
         </div>
+
+        {/* Toast */}
+        {toast && (
+          <div className={`absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2.5 text-white text-sm rounded-lg shadow-lg whitespace-nowrap ${toast.type === "success" ? "bg-gray-900" : "bg-red-500"}`}>
+            {toast.message}
+          </div>
+        )}
       </div>
     </div>
   );

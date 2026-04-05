@@ -1055,6 +1055,10 @@ function NewRdvModal({
   const [clientResults, setClientResults] = useState<SearchClient[]>([]);
   const [selectedClient, setSelectedClient] = useState<SearchClient | null>(prefillClient);
 
+  // Quote selection
+  const [clientQuotes, setClientQuotes] = useState<{ id: string; quote_number: string; total_ttc: number; status: string }[]>([]);
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(prefillQuoteId);
+
   const [selectedAssignees, setSelectedAssignees] = useState<Set<string>>(new Set());
   const [date, setDate] = useState(prefillDate ?? fmt(new Date()));
   const [time, setTime] = useState(prefillTime ?? "09:00");
@@ -1075,6 +1079,34 @@ function NewRdvModal({
       setDuration(durationFromSplits(selectedClient.nb_splits));
     }
   }, [selectedClient, prefillClient]);
+
+  // Fetch client quotes when client changes
+  useEffect(() => {
+    if (!selectedClient) {
+      setClientQuotes([]);
+      setSelectedQuoteId(null);
+      return;
+    }
+    (async () => {
+      const token = await getToken();
+      if (!token) return;
+      try {
+        const res = await fetch(`/api/quotes?client_id=${selectedClient.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        const quotes = (json.quotes ?? []) as { id: string; quote_number: string; total_ttc: number; status: string }[];
+        setClientQuotes(quotes);
+        if (prefillQuoteId && quotes.some((q) => q.id === prefillQuoteId)) {
+          setSelectedQuoteId(prefillQuoteId);
+        } else if (quotes.length === 1) {
+          setSelectedQuoteId(quotes[0].id);
+        } else {
+          setSelectedQuoteId(null);
+        }
+      } catch { setClientQuotes([]); }
+    })();
+  }, [selectedClient, prefillQuoteId]);
 
   async function searchClients(query: string) {
     setClientSearch(query);
@@ -1119,7 +1151,7 @@ function NewRdvModal({
         body: JSON.stringify({
           client_id: selectedClient.id,
           company_id: selectedClient.company_id,
-          quote_id: prefillQuoteId || null,
+          quote_id: selectedQuoteId || null,
           assignee_ids: assigneeIds,
           assigned_to: assigneeIds[0],
           scheduled_date: date,
@@ -1184,6 +1216,24 @@ function NewRdvModal({
               </div>
             )}
           </div>
+
+          {/* Devis associé */}
+          {clientQuotes.length > 1 && (
+            <div>
+              <label className={labelCls}>Devis associé</label>
+              <select className={inputCls} value={selectedQuoteId ?? ""} onChange={(e) => setSelectedQuoteId(e.target.value || null)}>
+                <option value="">Aucun devis</option>
+                {clientQuotes.map((q) => {
+                  const statusLabel = q.status === "sent" ? "Envoyé" : q.status === "draft" ? "Brouillon" : q.status === "accepted" ? "Accepté" : q.status;
+                  return (
+                    <option key={q.id} value={q.id}>
+                      {q.quote_number} — {q.total_ttc.toFixed(2).replace(".", ",")} € — {statusLabel}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
 
           {/* Intervenants (multi-select) */}
           <div>

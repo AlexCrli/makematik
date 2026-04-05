@@ -77,6 +77,10 @@ export async function PUT(
       "iban", "bank_account_name",
       "email_subject_quote", "email_template_quote",
       "email_subject_invoice", "email_template_invoice",
+      "email_subject_followup_prospect", "email_template_followup_prospect",
+      "email_subject_followup_quote", "email_template_followup_quote",
+      "email_subject_followup_invoice", "email_template_followup_invoice",
+      "followup_quote_days", "followup_invoice_days",
     ];
     const updates: Record<string, unknown> = {};
     for (const key of allowed) {
