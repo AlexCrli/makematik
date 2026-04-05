@@ -949,16 +949,17 @@ export default function PlanningPage() {
                         <div className={`text-xs font-medium mb-1 ${isToday ? "text-[#6366f1]" : "text-gray-500"}`}>{day.getDate()}</div>
                         <div className="space-y-0.5">
                           {dayIvs.slice(0, 3).map((iv) => {
-                            const pColor = iv.assignees?.length > 0
-                              ? (iv.assignees[0].color || getColor(iv.assignees[0].profile_id, profiles))
-                              : getColor(iv.assigned_to, profiles);
+                            const colors = iv.assignees?.length > 0
+                              ? iv.assignees.map((a) => a.color || getColor(a.profile_id, profiles))
+                              : [getColor(iv.assigned_to, profiles)];
+                            const pColor = colors[0];
                             const isOwnIv = iv.assignees?.length > 0
                               ? iv.assignees.some((a) => a.profile_id === currentUserId)
                               : isOwn(iv.assigned_to);
                             return (
-                              <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 truncate cursor-pointer hover:shadow-sm flex items-center gap-0.5" style={{ backgroundColor: pColor, opacity: isOwnIv ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
-                                {iv.assignees?.length > 1 && iv.assignees.slice(1).map((a, idx) => <span key={idx} className="w-1.5 h-1.5 rounded-full shrink-0 border border-white/50" style={{ backgroundColor: a.color || getColor(a.profile_id, profiles) }} />)}
-                                {iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}
+                              <div key={iv.id} className="text-[10px] text-white rounded px-1 py-0.5 cursor-pointer hover:shadow-sm flex items-center gap-0.5 overflow-hidden" style={{ backgroundColor: pColor, opacity: isOwnIv ? 1 : 0.6 }} onClick={(e) => { e.stopPropagation(); router.push(`/app/interventions/${iv.id}`); }}>
+                                {colors.length > 1 && colors.map((c, idx) => <span key={idx} className="w-2 h-2 rounded-full shrink-0 border border-white/50" style={{ backgroundColor: c }} />)}
+                                <span className="truncate">{iv.scheduled_time.slice(0, 5)} {iv.client ? `${iv.client.first_name} ${iv.client.last_name[0]}.` : "—"}</span>
                               </div>
                             );
                           })}

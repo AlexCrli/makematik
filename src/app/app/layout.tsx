@@ -216,7 +216,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+    <div className="h-screen flex overflow-hidden" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -227,7 +227,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-[#1B2A4A] flex flex-col transition-transform duration-200 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#1B2A4A] flex flex-col transition-transform duration-200 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -242,7 +242,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {navLinks.filter((link) => !link.adminOnly || profile?.role === "admin").map((link) => {
             const active = pathname === link.href;
             return (
@@ -283,7 +283,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen bg-[#F5F7FA]">
+      <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-[#F5F7FA] lg:ml-64">
         {/* Mobile header */}
         <header className="lg:hidden h-14 bg-white border-b border-gray-200 flex items-center px-4">
           <button

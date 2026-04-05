@@ -13,6 +13,7 @@ interface ClientInfo {
   id: string;
   first_name: string;
   last_name: string;
+  email: string | null;
   address: string | null;
   postal_code: string | null;
   city: string | null;
@@ -89,7 +90,9 @@ export default function NouveauDevisPage() {
   const [showPricingModal, setShowPricingModal] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
   const [formError, setFormError] = useState("");
+  const [toast, setToast] = useState<{ message: string; type: "success" | "warning" } | null>(null);
   const [clientSearch, setClientSearch] = useState("");
   const [clientResults, setClientResults] = useState<ClientInfo[]>([]);
   const [searchingClients, setSearchingClients] = useState(false);
@@ -118,6 +121,7 @@ export default function NouveauDevisPage() {
           id: json.client.id,
           first_name: json.client.first_name,
           last_name: json.client.last_name,
+          email: json.client.email ?? null,
           address: json.client.address,
           postal_code: json.client.postal_code,
           city: json.client.city,
@@ -242,11 +246,16 @@ export default function NouveauDevisPage() {
       return;
     }
 
-    setSaving(true);
+    if (sendAfterSave) {
+      setSending(true);
+    } else {
+      setSaving(true);
+    }
     const token = await getToken();
     if (!token) {
       setFormError("Session expirée, reconnectez-vous");
       setSaving(false);
+      setSending(false);
       return;
     }
 
@@ -261,7 +270,7 @@ export default function NouveauDevisPage() {
         })),
         tva_rate: 20,
         tax_credit_rate: hasTaxCredit ? 50 : 0,
-        status: sendAfterSave ? "sent" : "draft",
+        status: "draft",
       };
 
       const res = await fetch("/api/quotes", {
@@ -273,13 +282,24 @@ export default function NouveauDevisPage() {
 
       if (res.ok && json.quote) {
         if (sendAfterSave) {
-          // Also mark as sent + update prospect status
-          await fetch(`/api/quotes/${json.quote.id}/send`, {
-            method: "POST",
-            headers: authHeaders(token),
-          });
+          try {
+            const emailRes = await fetch(`/api/quotes/${json.quote.id}/send-email`, {
+              method: "POST",
+              headers: authHeaders(token),
+            });
+            const emailJson = await emailRes.json();
+            if (emailRes.ok && emailJson.success) {
+              setToast({ message: "Devis enregistré et envoyé par email", type: "success" });
+            } else {
+              setToast({ message: `Devis enregistré. L'email n'a pas pu être envoyé : ${emailJson.error ?? "erreur inconnue"}`, type: "warning" });
+            }
+          } catch {
+            setToast({ message: "Devis enregistré. L'email n'a pas pu être envoyé.", type: "warning" });
+          }
+          setTimeout(() => router.push("/app/devis"), 1500);
+        } else {
+          router.push("/app/devis");
         }
-        router.push("/app/devis");
       } else {
         console.error("[devis/nouveau] API error:", json);
         setFormError(json.error || "Erreur lors de la création du devis");
@@ -289,6 +309,7 @@ export default function NouveauDevisPage() {
       setFormError("Erreur réseau, réessayez");
     }
     setSaving(false);
+    setSending(false);
   }
 
   const inputCls =
@@ -535,22 +556,36 @@ export default function NouveauDevisPage() {
             <div className="mt-6 space-y-2">
               <button
                 onClick={() => handleSave(false)}
-                disabled={saving}
+                disabled={saving || sending}
                 className="w-full px-4 py-2.5 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40"
               >
                 {saving ? "Enregistrement..." : "Enregistrer brouillon"}
               </button>
-              <button
-                onClick={() => handleSave(true)}
-                disabled={saving}
-                className="w-full px-4 py-2.5 bg-[#6366f1] hover:bg-[#818cf8] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
-              >
-                {saving ? "Envoi..." : "Enregistrer et envoyer"}
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => handleSave(true)}
+                  disabled={saving || sending || !client?.email}
+                  className="w-full px-4 py-2.5 bg-[#6366f1] hover:bg-[#818cf8] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40"
+                >
+                  {sending ? "Envoi en cours..." : "Enregistrer et envoyer"}
+                </button>
+                {client && !client.email && (
+                  <div className="invisible group-hover:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap">
+                    Le prospect n&apos;a pas d&apos;adresse email
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 z-50 px-4 py-2.5 text-white text-sm rounded-lg shadow-lg ${toast.type === "success" ? "bg-gray-900" : "bg-orange-500"}`}>
+          {toast.message}
+        </div>
+      )}
 
       {/* Modal — Pricing list */}
       {showPricingModal && (

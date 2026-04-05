@@ -164,6 +164,7 @@ export default function InterventionDetailPage() {
   // UI
   const [showNavChoice, setShowNavChoice] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "warning" } | null>(null);
 
   // Fetch intervention
   useEffect(() => {
@@ -275,7 +276,7 @@ export default function InterventionDetailPage() {
 
         const totalHt = invoiceLines.reduce((s, l) => s + l.quantity * l.unit_price, 0);
 
-        await fetch("/api/invoices", {
+        const invoiceRes = await fetch("/api/invoices", {
           method: "POST", headers: authHeaders(token),
           body: JSON.stringify({
             company_id: intervention.company_id,
@@ -290,6 +291,29 @@ export default function InterventionDetailPage() {
             lines: invoiceLines,
           }),
         });
+
+        // Auto-send invoice email
+        let emailSent = false;
+        if (invoiceRes.ok) {
+          const invoiceJson = await invoiceRes.json();
+          const invoiceId = invoiceJson.invoice?.id;
+          if (invoiceId) {
+            try {
+              const emailRes = await fetch(`/api/invoices/${invoiceId}/send-email`, {
+                method: "POST", headers: authHeaders(token),
+              });
+              const emailJson = await emailRes.json();
+              emailSent = emailRes.ok && emailJson.success;
+            } catch { /* email send failed silently */ }
+          }
+        }
+
+        if (emailSent) {
+          setToast({ message: "Intervention clôturée et facture envoyée par email", type: "success" });
+        } else {
+          setToast({ message: "Intervention clôturée. La facture n'a pas pu être envoyée par email.", type: "warning" });
+        }
+        setTimeout(() => setToast(null), 4000);
       }
       setIntervention((prev) => prev ? { ...prev, status: "completed" } : prev);
     }
@@ -721,6 +745,13 @@ export default function InterventionDetailPage() {
           <InfoRow label="Client" value={client ? `${client.first_name} ${client.last_name}` : "—"} />
           <InfoRow label="Date" value={formatDateFr(intervention.scheduled_date, intervention.scheduled_time)} />
         </Card>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 md:left-auto md:translate-x-0 md:right-6 z-50 px-4 py-2.5 text-white text-sm rounded-lg shadow-lg ${toast.type === "success" ? "bg-gray-900" : "bg-orange-500"}`}>
+          {toast.message}
+        </div>
       )}
     </div>
   );
